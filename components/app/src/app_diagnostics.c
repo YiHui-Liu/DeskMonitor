@@ -14,6 +14,7 @@
 #include <esp_system.h>
 
 #include "app/app_storage.h"
+#include "app/app_wifi.h"
 #include "bsp/bsp_i2c.h"
 #include "bsp/bsp_io.h"
 #include "sensors/aht20.h"
@@ -27,11 +28,12 @@ static bool i2c_device_found(unsigned address) {
   return deskmon_i2c_probe((uint16_t)address, I2C_PROBE_TIMEOUT_MS) == ESP_OK;
 }
 
-static void add_i2c_section(cJSON *root) {
-  cJSON *i2c = cJSON_AddObjectToObject(root, "i2c");
-  cJSON_AddNumberToObject(i2c, "sda", DESKMON_I2C_SDA_GPIO);
-  cJSON_AddNumberToObject(i2c, "scl", DESKMON_I2C_SCL_GPIO);
-  cJSON_AddNumberToObject(i2c, "frequency_hz", DESKMON_I2C_FREQ_HZ);
+static void add_wifi_section(cJSON *root) {
+  cJSON *wifi = cJSON_AddObjectToObject(root, "wifi");
+  deskmon_wifi_status_t wifi_status = deskmon_wifi_status();
+  cJSON_AddBoolToObject(wifi, "sta_connected", wifi_status.sta_connected);
+  cJSON_AddBoolToObject(wifi, "ap_started", wifi_status.ap_started);
+  cJSON_AddStringToObject(wifi, "sta_ip", wifi_status.sta_ip);
 }
 
 static cJSON *create_quantity_row(const char *name, const char *sensor, unsigned address, const char *status,
@@ -211,7 +213,7 @@ char *deskmon_diagnostics_json(void) {
     return NULL;
   }
 
-  add_i2c_section(root);
+  add_wifi_section(root);
   add_quantities_section(root);
   add_io_section(root);
   add_system_section(root);

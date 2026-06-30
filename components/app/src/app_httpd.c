@@ -486,7 +486,6 @@ esp_err_t deskmon_httpd_start(deskmon_config_t *config) {
   ESP_RETURN_ON_ERROR(httpd_start(&s_server, &server_config), TAG, "http server start failed");
 
   const httpd_uri_t root = {.uri = "/", .method = HTTP_GET, .handler = root_get_handler};
-  const httpd_uri_t health = {.uri = "/api/health", .method = HTTP_GET, .handler = health_get_handler};
   const httpd_uri_t config_get = {.uri = "/api/config", .method = HTTP_GET, .handler = config_get_handler};
   const httpd_uri_t config_post = {.uri = "/api/config", .method = HTTP_POST, .handler = config_post_handler};
   const httpd_uri_t diagnostics_get = {
@@ -496,7 +495,6 @@ esp_err_t deskmon_httpd_start(deskmon_config_t *config) {
   const httpd_uri_t ota_post = {.uri = "/api/ota", .method = HTTP_POST, .handler = ota_post_handler};
 
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &root), TAG, "register root failed");
-  ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &health), TAG, "register health failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &config_get), TAG, "register config get failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &config_post), TAG, "register config post failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &diagnostics_get), TAG, "register diagnostics failed");
