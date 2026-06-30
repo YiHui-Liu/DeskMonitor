@@ -12,6 +12,11 @@ static void copy_json_string(cJSON *root, const char *key, char *target, size_t 
   }
 }
 
+static bool json_string_fits(cJSON *root, const char *key, size_t target_size) {
+  cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
+  return !cJSON_IsString(item) || item->valuestring == NULL || strlen(item->valuestring) < target_size;
+}
+
 static void add_pages(cJSON *root, const deskmon_page_enable_t *pages) {
   cJSON *json_pages = cJSON_AddObjectToObject(root, "pages");
   cJSON_AddBoolToObject(json_pages, "summary", pages->summary);
@@ -43,6 +48,8 @@ char *deskmon_config_to_json(const deskmon_config_t *config) {
   cJSON_AddStringToObject(root, "qweather_api_key", config->qweather_api_key);
   cJSON_AddStringToObject(root, "qweather_location", config->qweather_location);
   cJSON_AddStringToObject(root, "page_summary_note", config->page_summary_note);
+  cJSON_AddStringToObject(root, "ntp_server", config->ntp_server);
+  cJSON_AddStringToObject(root, "timezone", config->timezone);
   cJSON_AddNumberToObject(root, "carousel_interval_sec", config->carousel_interval_sec);
   cJSON_AddNumberToObject(root, "sensor_read_interval_sec", config->sensor_read_interval_sec);
   cJSON_AddNumberToObject(root, "sensor_history_retention_hours", config->sensor_history_retention_hours);
@@ -69,6 +76,16 @@ deskmon_config_status_t deskmon_config_from_json(const char *json, deskmon_confi
   copy_json_string(root, "qweather_api_key", next.qweather_api_key, sizeof(next.qweather_api_key));
   copy_json_string(root, "qweather_location", next.qweather_location, sizeof(next.qweather_location));
   copy_json_string(root, "page_summary_note", next.page_summary_note, sizeof(next.page_summary_note));
+  if (!json_string_fits(root, "ntp_server", sizeof(next.ntp_server))) {
+    cJSON_Delete(root);
+    return DESKMON_CONFIG_ERR_NTP_SERVER;
+  }
+  if (!json_string_fits(root, "timezone", sizeof(next.timezone))) {
+    cJSON_Delete(root);
+    return DESKMON_CONFIG_ERR_TIMEZONE;
+  }
+  copy_json_string(root, "ntp_server", next.ntp_server, sizeof(next.ntp_server));
+  copy_json_string(root, "timezone", next.timezone, sizeof(next.timezone));
 
   cJSON *carousel = cJSON_GetObjectItemCaseSensitive(root, "carousel_interval_sec");
   if (cJSON_IsNumber(carousel)) {

@@ -17,6 +17,7 @@
 #include <esp_timer.h>
 
 #include "app/app_storage.h"
+#include "app/app_time.h"
 #include "app/app_wifi.h"
 #include "bsp/bsp_i2c.h"
 #include "bsp/bsp_io.h"
@@ -31,6 +32,14 @@ static uint32_t IMAGE_SIZE;
 
 static bool i2c_device_found(unsigned address) {
   return deskmon_i2c_probe((uint16_t)address, I2C_PROBE_TIMEOUT_MS) == ESP_OK;
+}
+
+static void add_time_section(cJSON *root) {
+  int64_t uptime_ms = esp_timer_get_time() / 1000;
+
+  cJSON *time = create_time_status_json();
+  cJSON_AddItemToObject(root, "time", time);
+  cJSON_AddNumberToObject(time, "uptime_ms", uptime_ms);
 }
 
 static void add_wifi_section(cJSON *root) {
@@ -244,9 +253,7 @@ char *deskmon_diagnostics_json(void) {
     return NULL;
   }
 
-  int64_t uptime_ms = esp_timer_get_time() / 1000;
-  cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
-
+  add_time_section(root);
   add_wifi_section(root);
   add_quantities_section(root);
   add_io_section(root);

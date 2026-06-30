@@ -7,6 +7,7 @@ idf_component_register(
         "src/app_httpd.c"
         "src/app_ota.c"
         "src/app_storage.c"
+        "src/app_time.c"
         "src/app_wifi.c"
     INCLUDE_DIRS
         "include"

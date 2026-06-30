@@ -54,6 +54,7 @@ esp_err_t deskmon_config_load(deskmon_config_t *config) {
     return use_default_config(config, "config read failed");
   }
 
+  deskmon_config_set_defaults(config);
   deskmon_config_status_t status = deskmon_config_from_json(json, config);
   free(json);
 

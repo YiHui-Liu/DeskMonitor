@@ -8,6 +8,7 @@
 #include "app/app_diagnostics.h"
 #include "app/app_httpd.h"
 #include "app/app_storage.h"
+#include "app/app_time.h"
 #include "app/app_wifi.h"
 #include "bsp/bsp_i2c.h"
 #include "ui/ui_display.h"
@@ -33,6 +34,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(deskmon_i2c_init());
   deskmon_diagnostics_log();
   ESP_ERROR_CHECK(deskmon_wifi_start(&s_config));
+  ESP_ERROR_CHECK(deskmon_time_apply_config(&s_config));
   ESP_ERROR_CHECK(deskmon_httpd_start(&s_config));
 
   esp_err_t display_err = deskmon_display_init();

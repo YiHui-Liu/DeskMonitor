@@ -4,6 +4,19 @@
 
 static bool string_is_terminated(const char *value, size_t capacity) { return memchr(value, '\0', capacity) != NULL; }
 
+static bool string_is_nonempty_without_newline(const char *value) {
+  if (value[0] == '\0') {
+    return false;
+  }
+
+  for (const char *p = value; *p != '\0'; ++p) {
+    if (*p == '\r' || *p == '\n') {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool any_page_enabled(const deskmon_page_enable_t *pages) {
   return pages->summary || pages->weather || pages->sensor || pages->memo || pages->album;
 }
@@ -16,6 +29,8 @@ void deskmon_config_set_defaults(deskmon_config_t *config) {
   memset(config, 0, sizeof(*config));
   strcpy(config->qweather_location, "101010100");
   strcpy(config->page_summary_note, "Desk Monitor");
+  strcpy(config->ntp_server, "pool.ntp.org");
+  strcpy(config->timezone, "CST-8");
   config->carousel_interval_sec = DESKMON_CONFIG_DEFAULT_CAROUSEL_SEC;
   config->sensor_read_interval_sec = DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC;
   config->sensor_history_retention_hours = DESKMON_CONFIG_DEFAULT_SENSOR_HISTORY_HOURS;
@@ -61,6 +76,16 @@ deskmon_config_status_t deskmon_config_validate(const deskmon_config_t *config) 
     return DESKMON_CONFIG_ERR_QWEATHER_LOCATION;
   }
 
+  if (!string_is_terminated(config->ntp_server, sizeof(config->ntp_server)) ||
+      !string_is_nonempty_without_newline(config->ntp_server)) {
+    return DESKMON_CONFIG_ERR_NTP_SERVER;
+  }
+
+  if (!string_is_terminated(config->timezone, sizeof(config->timezone)) ||
+      !string_is_nonempty_without_newline(config->timezone)) {
+    return DESKMON_CONFIG_ERR_TIMEZONE;
+  }
+
   if (config->carousel_interval_sec < DESKMON_CONFIG_MIN_CAROUSEL_SEC ||
       config->carousel_interval_sec > DESKMON_CONFIG_MAX_CAROUSEL_SEC) {
     return DESKMON_CONFIG_ERR_CAROUSEL_INTERVAL;
@@ -101,6 +126,10 @@ const char *deskmon_config_status_name(deskmon_config_status_t status) {
     return "invalid sensor read interval";
   case DESKMON_CONFIG_ERR_SENSOR_HISTORY_RETENTION:
     return "invalid sensor history retention";
+  case DESKMON_CONFIG_ERR_NTP_SERVER:
+    return "invalid ntp server";
+  case DESKMON_CONFIG_ERR_TIMEZONE:
+    return "invalid timezone";
   case DESKMON_CONFIG_ERR_NO_PAGE_ENABLED:
     return "no page enabled";
   default:

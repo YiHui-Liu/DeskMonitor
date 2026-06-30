@@ -18,6 +18,7 @@ Web 控制台当前包含：
 | Pages / 页面 | 设置页面启用状态、汇总文字、轮播时间、传感器读取周期和历史保留时间。 |
 | OTA | 填写固件 HTTPS URL 并触发 OTA。 |
 | Sensors / 传感器 | 查看 `/api/diagnostics` 返回的传感器物理量读数。 |
+| Time / 时间 | 查看设备时间，设置 NTP 服务器、时区，或用浏览器当前时间校准设备。 |
 | System / 系统 | 查看 `/api/diagnostics` 返回的内存、LittleFS 存储和分区表使用情况。 |
 
 ## 传感器诊断接口
@@ -86,6 +87,8 @@ Content-Type: application/json
 | `qweather_api_key` | 和风天气 API Key | 最长 96 字符 | 空 |
 | `qweather_location` | 和风天气位置 ID | 最长 32 字符 | `101010100` |
 | `page_summary_note` | 汇总页文字 | 最长 128 字符 | `Desk Monitor / 桌面监视器` |
+| `ntp_server` | NTP 服务器 | 最长 64 字符；不能为空 | `pool.ntp.org` |
+| `timezone` | POSIX 时区字符串 | 最长 64 字符；不能为空 | `CST-8` |
 | `carousel_interval_sec` | 页面轮播间隔 | `5 - 3600` 秒 | `15` |
 | `sensor_read_interval_sec` | 传感器读取周期配置 | `1 - 3600` 秒 | `30` |
 | `sensor_history_retention_hours` | 传感器历史保留配置 | `1 - 720` 小时 | `24` |
@@ -112,6 +115,8 @@ Content-Type: application/json
   "qweather_api_key": "your-key",
   "qweather_location": "101010100",
   "page_summary_note": "Desk Monitor / 桌面监视器",
+  "ntp_server": "pool.ntp.org",
+  "timezone": "CST-8",
   "carousel_interval_sec": 15,
   "sensor_read_interval_sec": 30,
   "sensor_history_retention_hours": 24,
@@ -130,3 +135,21 @@ Content-Type: application/json
 - `sensor_read_interval_sec` 和 `sensor_history_retention_hours` 已经进入配置项，但当前传感器读数仍是 `/api/diagnostics` 按需读取，后台定时采样和历史曲线还没有启用。
 - 页面开关至少需要保留一个启用项，否则保存会失败。
 - `/api/diagnostics` 是唯一诊断路径，不提供单数形式的诊断路径。
+
+## 时间与 NTP
+
+设备启动 WiFi 后会按配置启动 SNTP，并使用 `timezone` 设置本地时间显示。Web 控制台会读取 `/api/time` 显示当前设备时间，也可以点击 `同步浏览器时间` 将浏览器当前 Unix 时间写入设备。
+
+```http
+GET /api/time
+POST /api/time
+Content-Type: application/json
+```
+
+手动设置时间请求示例：
+
+```json
+{"epoch_sec": 1782816000}
+```
+
+`/api/diagnostics` 也会返回顶层 `time` 对象，包含当前 epoch、本地时间、UTC 时间、NTP 服务器、时区和 SNTP 状态。

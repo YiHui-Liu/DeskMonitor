@@ -20,6 +20,7 @@
 #include "app/app_config_json.h"
 #include "app/app_diagnostics.h"
 #include "app/app_ota.h"
+#include "app/app_time.h"
 #include "app/app_wifi.h"
 
 static const char *TAG = "deskmon_httpd";
@@ -278,6 +279,18 @@ static esp_err_t diagnostics_get_handler(httpd_req_t *req) {
   return err;
 }
 
+static esp_err_t time_get_handler(httpd_req_t *req) {
+  char *json = deskmon_time_json();
+  if (json == NULL) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "time encode failed");
+    return ESP_FAIL;
+  }
+
+  esp_err_t err = send_json(req, json);
+  free(json);
+  return err;
+}
+
 static esp_err_t config_post_handler(httpd_req_t *req) {
   char *body = NULL;
   esp_err_t err = read_body(req, &body);
@@ -302,7 +315,47 @@ static esp_err_t config_post_handler(httpd_req_t *req) {
   }
 
   *s_config = next;
+  err = deskmon_time_apply_config(s_config);
+  if (err != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "time config apply failed");
+    return ESP_FAIL;
+  }
+
   return send_json(req, "{\"ok\":true}");
+}
+
+static esp_err_t time_post_handler(httpd_req_t *req) {
+  char *body = NULL;
+  esp_err_t err = read_body(req, &body);
+  if (err != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+    return ESP_FAIL;
+  }
+
+  cJSON *root = cJSON_Parse(body);
+  free(body);
+  if (root == NULL) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+    return ESP_FAIL;
+  }
+
+  cJSON *epoch = cJSON_GetObjectItemCaseSensitive(root, "epoch_sec");
+  bool valid_epoch = cJSON_IsNumber(epoch) && epoch->valuedouble >= 0.0;
+  int64_t epoch_sec = valid_epoch ? (int64_t)epoch->valuedouble : 0;
+  cJSON_Delete(root);
+
+  if (!valid_epoch) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid epoch_sec");
+    return ESP_FAIL;
+  }
+
+  err = deskmon_time_set_epoch(epoch_sec);
+  if (err != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, esp_err_to_name(err));
+    return ESP_FAIL;
+  }
+
+  return time_get_handler(req);
 }
 
 static esp_err_t qweather_test_post_handler(httpd_req_t *req) {
@@ -417,6 +470,8 @@ esp_err_t deskmon_httpd_start(deskmon_config_t *config) {
   const httpd_uri_t config_post = {.uri = "/api/config", .method = HTTP_POST, .handler = config_post_handler};
   const httpd_uri_t diagnostics_get = {
       .uri = "/api/diagnostics", .method = HTTP_GET, .handler = diagnostics_get_handler};
+  const httpd_uri_t time_get = {.uri = "/api/time", .method = HTTP_GET, .handler = time_get_handler};
+  const httpd_uri_t time_post = {.uri = "/api/time", .method = HTTP_POST, .handler = time_post_handler};
   const httpd_uri_t qweather_test_post = {
       .uri = "/api/qweather/test", .method = HTTP_POST, .handler = qweather_test_post_handler};
   const httpd_uri_t ota_post = {.uri = "/api/ota", .method = HTTP_POST, .handler = ota_post_handler};
@@ -425,6 +480,8 @@ esp_err_t deskmon_httpd_start(deskmon_config_t *config) {
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &config_get), TAG, "register config get failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &config_post), TAG, "register config post failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &diagnostics_get), TAG, "register diagnostics failed");
+  ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &time_get), TAG, "register time get failed");
+  ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &time_post), TAG, "register time post failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &qweather_test_post), TAG, "register qweather test failed");
   ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_server, &ota_post), TAG, "register ota post failed");
 
