@@ -41,7 +41,7 @@ static void ota_task(void *arg) {
 }
 
 esp_err_t deskmon_ota_start_url(const char *url) {
-  if (url == NULL || strncmp(url, "https://", 8) != 0) {
+  if (url == NULL || (strncmp(url, "https://", 8) != 0 && strncmp(url, "http://", 7) != 0)) {
     return ESP_ERR_INVALID_ARG;
   }
 
