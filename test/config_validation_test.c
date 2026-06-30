@@ -37,6 +37,10 @@ static void test_rejects_invalid_wifi_and_carousel_values(void)
     assert(deskmon_config_validate(&config) == DESKMON_CONFIG_ERR_CAROUSEL_INTERVAL);
 
     deskmon_config_set_defaults(&config);
+    config.sensor_read_interval_sec = DESKMON_CONFIG_MIN_SENSOR_READ_SEC;
+    assert(deskmon_config_validate(&config) == DESKMON_CONFIG_OK);
+
+    deskmon_config_set_defaults(&config);
     config.sensor_read_interval_sec = 0;
     assert(deskmon_config_validate(&config) == DESKMON_CONFIG_ERR_SENSOR_READ_INTERVAL);
 

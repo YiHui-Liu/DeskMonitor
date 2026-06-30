@@ -5,11 +5,16 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "app/app_storage.h"
 #include "bsp/bsp_i2c.h"
 #include "bsp/bsp_io.h"
 #include "cJSON.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
+#include "esp_littlefs.h"
 #include "esp_log.h"
+#include "esp_partition.h"
+#include "esp_system.h"
 #include "sensors/aht20.h"
 #include "sensors/ens160.h"
 #include "sensors/tsl2591.h"
@@ -163,6 +168,56 @@ static void add_io_section(cJSON *root)
     cJSON_AddNumberToObject(display, "backlight", DESKMON_DISPLAY_BL_GPIO);
 }
 
+static void add_memory_section(cJSON *system)
+{
+    cJSON *memory = cJSON_AddObjectToObject(system, "memory");
+    cJSON_AddNumberToObject(memory, "free_heap_bytes", esp_get_free_heap_size());
+    cJSON_AddNumberToObject(memory, "minimum_free_heap_bytes", esp_get_minimum_free_heap_size());
+    cJSON_AddNumberToObject(memory, "largest_free_block_bytes", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+}
+
+static void add_storage_section(cJSON *system)
+{
+    cJSON *storage = cJSON_AddObjectToObject(system, "storage");
+    size_t total_bytes = 0;
+    size_t used_bytes = 0;
+    esp_err_t err = esp_littlefs_info("littlefs", &total_bytes, &used_bytes);
+    cJSON_AddStringToObject(storage, "label", "littlefs");
+    cJSON_AddStringToObject(storage, "mount", DESKMON_STORAGE_BASE_PATH);
+    cJSON_AddStringToObject(storage, "status", err == ESP_OK ? "ok" : esp_err_to_name(err));
+    cJSON_AddNumberToObject(storage, "total_bytes", total_bytes);
+    cJSON_AddNumberToObject(storage, "used_bytes", used_bytes);
+    cJSON_AddNumberToObject(storage, "free_bytes", total_bytes > used_bytes ? total_bytes - used_bytes : 0);
+}
+
+static void add_partitions_section(cJSON *system)
+{
+    cJSON *partitions = cJSON_AddArrayToObject(system, "partitions");
+    esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
+    while (it != NULL) {
+        const esp_partition_t *partition = esp_partition_get(it);
+        cJSON *row = cJSON_CreateObject();
+        if (row != NULL) {
+            cJSON_AddStringToObject(row, "label", partition->label);
+            cJSON_AddNumberToObject(row, "type", partition->type);
+            cJSON_AddNumberToObject(row, "subtype", partition->subtype);
+            cJSON_AddNumberToObject(row, "address", partition->address);
+            cJSON_AddNumberToObject(row, "size_bytes", partition->size);
+            cJSON_AddItemToArray(partitions, row);
+        }
+        it = esp_partition_next(it);
+    }
+    esp_partition_iterator_release(it);
+}
+
+static void add_system_section(cJSON *root)
+{
+    cJSON *system = cJSON_AddObjectToObject(root, "system");
+    add_memory_section(system);
+    add_storage_section(system);
+    add_partitions_section(system);
+}
+
 char *deskmon_diagnostics_json(void)
 {
     cJSON *root = cJSON_CreateObject();
@@ -173,6 +228,7 @@ char *deskmon_diagnostics_json(void)
     add_i2c_section(root);
     add_quantities_section(root);
     add_io_section(root);
+    add_system_section(root);
 
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);

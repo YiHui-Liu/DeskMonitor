@@ -18,6 +18,7 @@ Web 控制台当前包含：
 | Pages / 页面 | 设置页面启用状态、汇总文字、轮播时间、传感器读取周期和历史保留时间。 |
 | OTA | 填写固件 HTTPS URL 并触发 OTA。 |
 | Sensors / 传感器 | 查看 `/api/diagnostics` 返回的传感器物理量读数。 |
+| System / 系统 | 查看 `/api/diagnostics` 返回的内存、LittleFS 存储和分区表使用情况。 |
 
 ## 传感器诊断接口
 
@@ -31,7 +32,15 @@ Web 控制台和 API 都使用 `/api/diagnostics`。接口返回顶层 `quantiti
     {"name":"Illuminance","sensor":"TSL2591","address":"0x29","status":"ok","reading":123.4,"unit":"lux"},
     {"name":"Temperature","sensor":"AHT20","address":"0x38","status":"ok","reading":24.8,"unit":"°C"},
     {"name":"Humidity","sensor":"AHT20","address":"0x38","status":"ok","reading":45.1,"unit":"%RH"}
-  ]
+  ],
+  "system": {
+    "memory": {"free_heap_bytes":180000,"minimum_free_heap_bytes":150000,"largest_free_block_bytes":90000},
+    "storage": {"label":"littlefs","mount":"/littlefs","status":"ok","total_bytes":1048576,"used_bytes":65536,"free_bytes":983040},
+    "partitions": [
+      {"label":"nvs","type":1,"subtype":2,"address":36864,"size_bytes":24576},
+      {"label":"littlefs","type":1,"subtype":130,"address":3211264,"size_bytes":884736}
+    ]
+  }
 }
 ```
 
@@ -44,6 +53,8 @@ Web 控制台和 API 都使用 `/api/diagnostics`。接口返回顶层 `quantiti
 | `read-error` | I2C 地址存在，但驱动读取失败，读数显示为 `n/a`。 |
 
 Web 控制台传感器表格列顺序为：`Name / Sensor / Address / Status / Reading / Unit`。
+
+系统区域会显示空闲堆内存、历史最低空闲堆、最大连续空闲块、LittleFS 已用/总量/可用空间，以及分区标签、类型、子类型、地址和大小。
 
 ## 修改设置
 
