@@ -1,6 +1,38 @@
-# This file was automatically generated for projects
-# without default 'CMakeLists.txt' file.
-
-FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
-
-idf_component_register(SRCS ${app_sources})
+idf_component_register(
+    SRCS
+        "main.c"
+        "app/app_config.c"
+        "app/app_config_json.c"
+        "app/app_config_validate.c"
+        "app/app_diagnostics.c"
+        "app/app_httpd.c"
+        "app/app_ota.c"
+        "app/app_storage.c"
+        "app/app_wifi.c"
+        "bsp/bsp_i2c.c"
+        "sensors/aht20.c"
+        "sensors/ens160.c"
+        "sensors/sensor_i2c.c"
+        "sensors/tsl2591.c"
+        "storage/tf_album.c"
+        "ui/ui_button.c"
+        "ui/ui_display.c"
+        "ui/ui_pages.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        app_update
+        esp_driver_i2c
+        esp_driver_gpio
+        esp_driver_spi
+        esp_event
+        esp_http_client
+        esp_http_server
+        esp_https_ota
+        esp_netif
+        esp_wifi
+        nvs_flash
+        espressif__cjson
+        joltwallet__littlefs
+        lvgl__lvgl
+)
