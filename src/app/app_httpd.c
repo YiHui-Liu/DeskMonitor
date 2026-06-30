@@ -34,7 +34,7 @@ static const char *CONTROL_PAGE =
     "<fieldset><legend>Pages / 页面</legend>"
     "<label>Summary note / 汇总信息 <input name=\"page_summary_note\"></label><br>"
     "<label>Carousel seconds / 轮播秒数 <input name=\"carousel_interval_sec\" type=\"number\" min=\"5\" max=\"3600\"></label><br>"
-    "<label>Sensor read seconds / 传感器读取秒数 <input name=\"sensor_read_interval_sec\" type=\"number\" min=\"5\" max=\"3600\"></label><br>"
+    "<label>Sensor read seconds / 传感器读取秒数 <input name=\"sensor_read_interval_sec\" type=\"number\" min=\"1\" max=\"3600\"></label><br>"
     "<label>History retention hours / 历史保留小时 <input name=\"sensor_history_retention_hours\" type=\"number\" min=\"1\" max=\"720\"></label><br>"
     "<label><input name=\"summary\" type=\"checkbox\"> Summary / 汇总</label>"
     "<label><input name=\"weather\" type=\"checkbox\"> Weather / 天气</label>"

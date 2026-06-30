@@ -59,7 +59,7 @@ Web 控制台传感器表格列顺序为：`Name / Sensor / Address / Status / R
 | `qweather_location` | 和风天气位置 ID | 最长 32 字符 | `101010100` |
 | `page_summary_note` | 汇总页文字 | 最长 128 字符 | `Desk Monitor / 桌面监视器` |
 | `carousel_interval_sec` | 页面轮播间隔 | `5 - 3600` 秒 | `15` |
-| `sensor_read_interval_sec` | 传感器读取周期配置 | `5 - 3600` 秒 | `30` |
+| `sensor_read_interval_sec` | 传感器读取周期配置 | `1 - 3600` 秒 | `30` |
 | `sensor_history_retention_hours` | 传感器历史保留配置 | `1 - 720` 小时 | `24` |
 | `pages.summary` | 是否启用汇总页 | 至少启用一个页面 | 启用 |
 | `pages.weather` | 是否启用天气页 | 至少启用一个页面 | 启用 |
