@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/ui_button.c"
+        "src/ui_carousel.c"
         "src/ui_display.c"
         "src/ui_pages.c"
     INCLUDE_DIRS

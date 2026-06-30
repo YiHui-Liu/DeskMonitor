@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #include "bsp/bsp_io.h"
+#include "ui/ui_carousel.h"
+#include "ui/ui_pages.h"
 
 #include "draw/sw/lv_draw_sw_utils.h"
 #include "driver/gpio.h"
@@ -33,6 +35,12 @@ static const char *TAG = "deskmon_display";
 static esp_lcd_panel_handle_t s_panel;
 static lv_display_t *s_display;
 static SemaphoreHandle_t s_flush_done_sem;
+static lv_obj_t *s_header_title;
+static lv_obj_t *s_content;
+static lv_obj_t *s_footer_items[DESKMON_PAGE_COUNT];
+static deskmon_page_id_t s_active_page = DESKMON_PAGE_SUMMARY;
+static bool s_enabled_pages[DESKMON_PAGE_COUNT] = {true, true, true, true, true};
+static uint32_t s_carousel_period_ms = 15U * 1000U;
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t s_draw_buf1[DISPLAY_BUF_BYTES];
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t s_draw_buf2[DISPLAY_BUF_BYTES];
 
@@ -66,27 +74,116 @@ static bool display_flush_done_cb(esp_lcd_panel_io_handle_t panel_io, esp_lcd_pa
   return task_woken == pdTRUE;
 }
 
-static void render_summary_page(void) {
+static void style_panel(lv_obj_t *obj, lv_color_t bg, lv_color_t border) {
+  lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(obj, bg, 0);
+  lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(obj, border, 0);
+  lv_obj_set_style_border_width(obj, 1, 0);
+  lv_obj_set_style_pad_all(obj, 0, 0);
+}
+
+static lv_obj_t *label_at(lv_obj_t *parent, const char *text, int32_t x, int32_t y, lv_color_t color) {
+  lv_obj_t *label = lv_label_create(parent);
+  lv_label_set_text(label, text);
+  lv_obj_set_pos(label, x, y);
+  lv_obj_set_style_text_color(label, color, 0);
+  return label;
+}
+
+static void footer_update(void) {
+  static const char *const nav_labels[DESKMON_PAGE_COUNT] = {"汇总", "天气", "传感", "备忘", "相册"};
+
+  for (int i = 0; i < DESKMON_PAGE_COUNT; ++i) {
+    lv_obj_t *item = s_footer_items[i];
+    if (item == NULL) {
+      continue;
+    }
+    const bool active = (i == s_active_page);
+    lv_obj_set_style_bg_color(item, lv_color_hex(active ? 0xEAF3FF : 0xFFFFFF), 0);
+    lv_obj_set_style_border_width(item, 0, 0);
+    lv_obj_set_style_radius(item, 8, 0);
+    lv_obj_set_style_text_color(item, lv_color_hex(active ? 0x155CC9 : 0x606A78), 0);
+    lv_obj_t *label = lv_obj_get_child(item, 0);
+    lv_label_set_text(label, nav_labels[i]);
+    lv_obj_center(label);
+  }
+}
+
+static void show_page(deskmon_page_id_t page) {
+  s_active_page = (page >= 0 && page < DESKMON_PAGE_COUNT) ? page : DESKMON_PAGE_SUMMARY;
+  lv_label_set_text(s_header_title, deskmon_page_title(s_active_page));
+  lv_obj_clean(s_content);
+  deskmon_page_create(s_active_page, s_content);
+  footer_update();
+}
+
+static void carousel_timer_cb(lv_timer_t *timer) {
+  (void)timer;
+  deskmon_page_id_t next = deskmon_carousel_next_enabled(s_active_page, s_enabled_pages);
+  if (next != s_active_page) {
+    show_page(next);
+  }
+}
+
+static void apply_display_config(const deskmon_display_config_t *config) {
+  if (config == NULL) {
+    return;
+  }
+  for (int i = 0; i < DESKMON_PAGE_COUNT; ++i) {
+    s_enabled_pages[i] = config->enabled_pages[i];
+  }
+  s_carousel_period_ms = config->carousel_interval_sec * 1000U;
+}
+
+static void render_dashboard(const deskmon_display_config_t *config) {
+  apply_display_config(config);
+  s_active_page = deskmon_carousel_next_enabled(DESKMON_PAGE_ALBUM, s_enabled_pages);
+
   lv_obj_t *screen = lv_screen_active();
-  lv_obj_set_style_bg_color(screen, lv_color_hex(0x101418), 0);
+  lv_obj_clean(screen);
+  lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(screen, lv_color_hex(0xF6F9FC), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
-  lv_obj_t *title = lv_label_create(screen);
-  lv_label_set_text(title, "DeskMonitor");
-  lv_obj_set_style_text_color(title, lv_color_hex(0x7EBCFF), 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 24);
+  lv_obj_t *header = lv_obj_create(screen);
+  style_panel(header, lv_color_hex(0xFFFFFF), lv_color_hex(0xE5EAF0));
+  lv_obj_set_pos(header, 0, 0);
+  lv_obj_set_size(header, 480, 38);
+  s_header_title = label_at(header, "", 0, 7, lv_color_hex(0x111827));
+  lv_obj_set_width(s_header_title, 480);
+  lv_obj_set_style_text_align(s_header_title, LV_TEXT_ALIGN_CENTER, 0);
+  label_at(header, "10:30   WiFi", 348, 7, lv_color_hex(0x111827));
+  label_at(header, "在线", 440, 7, lv_color_hex(0x21B650));
 
-  lv_obj_t *subtitle = lv_label_create(screen);
-  lv_label_set_text(subtitle, "ESP32 ST7796S online");
-  lv_obj_set_style_text_color(subtitle, lv_color_hex(0xB8C4D0), 0);
-  lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 52);
+  s_content = lv_obj_create(screen);
+  lv_obj_remove_flag(s_content, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(s_content, 0, 38);
+  lv_obj_set_size(s_content, 480, 236);
+  lv_obj_set_style_bg_opa(s_content, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(s_content, 0, 0);
+  lv_obj_set_style_pad_all(s_content, 0, 0);
 
-  lv_obj_t *body = lv_label_create(screen);
-  lv_label_set_text(body, "WiFi: AP DeskMonitor-Setup\n"
-                          "Web:  http://192.168.4.1/\n"
-                          "API:  /api/diagnostics");
-  lv_obj_set_style_text_color(body, lv_color_hex(0xE0E6EC), 0);
-  lv_obj_align(body, LV_ALIGN_TOP_LEFT, 28, 96);
+  lv_obj_t *footer = lv_obj_create(screen);
+  style_panel(footer, lv_color_hex(0xFFFFFF), lv_color_hex(0xE5EAF0));
+  lv_obj_set_pos(footer, 0, 274);
+  lv_obj_set_size(footer, 480, 46);
+  for (int i = 0; i < DESKMON_PAGE_COUNT; ++i) {
+    lv_obj_t *item = lv_obj_create(footer);
+    lv_obj_remove_flag(item, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(item, 10 + i * 92, 6);
+    lv_obj_set_size(item, 84, 34);
+    lv_obj_set_style_pad_all(item, 0, 0);
+    s_footer_items[i] = item;
+    lv_obj_t *label = lv_label_create(item);
+    lv_obj_center(label);
+  }
+
+  show_page(s_active_page);
+  lv_timer_t *timer = lv_timer_create(carousel_timer_cb, s_carousel_period_ms, NULL);
+  if (timer == NULL) {
+    ESP_LOGW(TAG, "carousel timer alloc failed; display will be static");
+  }
 }
 
 static void lvgl_task(void *arg) {
@@ -223,7 +320,7 @@ fail:
   return err;
 }
 
-static esp_err_t init_lvgl(void) {
+static esp_err_t init_lvgl(const deskmon_display_config_t *config) {
   lv_init();
   lv_tick_set_cb(display_tick_cb);
 
@@ -237,13 +334,13 @@ static esp_err_t init_lvgl(void) {
   lv_display_set_buffers(s_display, s_draw_buf1, s_draw_buf2, DISPLAY_BUF_BYTES, LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(s_display, display_flush_cb);
 
-  render_summary_page();
+  render_dashboard(config);
 
   BaseType_t ok = xTaskCreate(lvgl_task, "deskmon_lvgl", 6 * 1024, NULL, configMAX_PRIORITIES - 1, NULL);
   return ok == pdPASS ? ESP_OK : ESP_FAIL;
 }
 
-esp_err_t deskmon_display_init(void) {
+esp_err_t deskmon_display_init(const deskmon_display_config_t *config) {
 #if !DESKMON_DISPLAY_ENABLED
   ESP_LOGW(TAG, "display disabled in bsp_io.h");
   return ESP_ERR_NOT_SUPPORTED;
@@ -261,7 +358,7 @@ esp_err_t deskmon_display_init(void) {
     return err;
   }
 
-  err = init_lvgl();
+  err = init_lvgl(config);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "LVGL init failed: %s", esp_err_to_name(err));
     return err;

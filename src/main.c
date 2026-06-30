@@ -16,6 +16,20 @@
 static const char *TAG = "desk_monitor";
 static deskmon_config_t s_config;
 
+static deskmon_display_config_t display_config_from_app_config(const deskmon_config_t *config) {
+  return (deskmon_display_config_t){
+      .enabled_pages =
+          {
+              config->enabled_pages.summary,
+              config->enabled_pages.weather,
+              config->enabled_pages.sensor,
+              config->enabled_pages.memo,
+              config->enabled_pages.album,
+          },
+      .carousel_interval_sec = config->carousel_interval_sec,
+  };
+}
+
 static esp_err_t init_nvs(void) {
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -37,7 +51,8 @@ void app_main(void) {
   ESP_ERROR_CHECK(deskmon_time_apply_config(&s_config));
   ESP_ERROR_CHECK(deskmon_httpd_start(&s_config));
 
-  esp_err_t display_err = deskmon_display_init();
+  const deskmon_display_config_t display_config = display_config_from_app_config(&s_config);
+  esp_err_t display_err = deskmon_display_init(&display_config);
   if (display_err != ESP_OK) {
     ESP_LOGW(TAG, "display init skipped (%s); web diagnostics remain available", esp_err_to_name(display_err));
   }
