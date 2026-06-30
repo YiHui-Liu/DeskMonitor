@@ -22,35 +22,35 @@
 #define DESKMON_CONFIG_MAX_SENSOR_HISTORY_HOURS 720U
 
 typedef enum {
-    DESKMON_CONFIG_OK = 0,
-    DESKMON_CONFIG_ERR_NULL,
-    DESKMON_CONFIG_ERR_WIFI_SSID,
-    DESKMON_CONFIG_ERR_WIFI_PASSWORD,
-    DESKMON_CONFIG_ERR_QWEATHER_LOCATION,
-    DESKMON_CONFIG_ERR_CAROUSEL_INTERVAL,
-    DESKMON_CONFIG_ERR_SENSOR_READ_INTERVAL,
-    DESKMON_CONFIG_ERR_SENSOR_HISTORY_RETENTION,
-    DESKMON_CONFIG_ERR_NO_PAGE_ENABLED,
+  DESKMON_CONFIG_OK = 0,
+  DESKMON_CONFIG_ERR_NULL,
+  DESKMON_CONFIG_ERR_WIFI_SSID,
+  DESKMON_CONFIG_ERR_WIFI_PASSWORD,
+  DESKMON_CONFIG_ERR_QWEATHER_LOCATION,
+  DESKMON_CONFIG_ERR_CAROUSEL_INTERVAL,
+  DESKMON_CONFIG_ERR_SENSOR_READ_INTERVAL,
+  DESKMON_CONFIG_ERR_SENSOR_HISTORY_RETENTION,
+  DESKMON_CONFIG_ERR_NO_PAGE_ENABLED,
 } deskmon_config_status_t;
 
 typedef struct {
-    bool summary;
-    bool weather;
-    bool sensor;
-    bool memo;
-    bool album;
+  bool summary;
+  bool weather;
+  bool sensor;
+  bool memo;
+  bool album;
 } deskmon_page_enable_t;
 
 typedef struct {
-    char wifi_ssid[DESKMON_CONFIG_WIFI_SSID_MAX_LEN + 1];
-    char wifi_password[DESKMON_CONFIG_WIFI_PASSWORD_MAX_LEN + 1];
-    char qweather_api_key[DESKMON_CONFIG_QWEATHER_KEY_MAX_LEN + 1];
-    char qweather_location[DESKMON_CONFIG_QWEATHER_LOCATION_MAX_LEN + 1];
-    char page_summary_note[DESKMON_CONFIG_PAGE_NOTE_MAX_LEN + 1];
-    uint32_t carousel_interval_sec;
-    uint32_t sensor_read_interval_sec;
-    uint32_t sensor_history_retention_hours;
-    deskmon_page_enable_t enabled_pages;
+  char wifi_ssid[DESKMON_CONFIG_WIFI_SSID_MAX_LEN + 1];
+  char wifi_password[DESKMON_CONFIG_WIFI_PASSWORD_MAX_LEN + 1];
+  char qweather_api_key[DESKMON_CONFIG_QWEATHER_KEY_MAX_LEN + 1];
+  char qweather_location[DESKMON_CONFIG_QWEATHER_LOCATION_MAX_LEN + 1];
+  char page_summary_note[DESKMON_CONFIG_PAGE_NOTE_MAX_LEN + 1];
+  uint32_t carousel_interval_sec;
+  uint32_t sensor_read_interval_sec;
+  uint32_t sensor_history_retention_hours;
+  deskmon_page_enable_t enabled_pages;
 } deskmon_config_t;
 
 void deskmon_config_set_defaults(deskmon_config_t *config);

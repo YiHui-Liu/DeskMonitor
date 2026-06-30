@@ -7,8 +7,8 @@
 #include "esp_err.h"
 
 typedef struct {
-    const char *name;
-    unsigned address;
+  const char *name;
+  unsigned address;
 } deskmon_i2c_device_info_t;
 
 esp_err_t deskmon_i2c_init(void);
