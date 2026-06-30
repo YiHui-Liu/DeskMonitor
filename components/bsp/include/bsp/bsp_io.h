@@ -19,8 +19,14 @@
 
 #define DESKMON_DISPLAY_ENABLED 1
 #define DESKMON_DISPLAY_SPI_HOST SPI2_HOST
+/* Physical panel GRAM is 320 (source) x 480 (gate). */
 #define DESKMON_DISPLAY_WIDTH 320
 #define DESKMON_DISPLAY_HEIGHT 480
+/* Orientation: swap_xy rotates to landscape (logical 480x320); mirror bits
+ * compensate for module mounting. Defaults match the 4" ST7796S module. */
+#define DESKMON_DISPLAY_SWAP_XY 1
+#define DESKMON_DISPLAY_MIRROR_X 1
+#define DESKMON_DISPLAY_MIRROR_Y 1
 #define DESKMON_DISPLAY_SPI_MODE 0
 #define DESKMON_DISPLAY_PCLK_HZ (40 * 1000 * 1000)
 #define DESKMON_DISPLAY_CMD_BITS 8

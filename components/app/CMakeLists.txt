@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        "src/app_config.c"
+        "src/app_config_json.c"
+        "src/app_config_validate.c"
+        "src/app_diagnostics.c"
+        "src/app_httpd.c"
+        "src/app_ota.c"
+        "src/app_storage.c"
+        "src/app_wifi.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        app_update
+        bsp
+        esp_event
+        esp_http_client
+        esp_http_server
+        esp_https_ota
+        esp_netif
+        esp_wifi
+        espressif__cjson
+        joltwallet__littlefs
+        mbedtls
+        sensors
+)

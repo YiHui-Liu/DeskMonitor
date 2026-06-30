@@ -22,24 +22,24 @@ After changing `sdkconfig.defaults`, delete `sdkconfig.esp32dev` (gitignored) to
 
 ## Architecture
 
-**Source registration**: `src/CMakeLists.txt` uses an explicit `SRCS` list. Every new `.c` file must be added there manually — there is no glob.
+**Source registration**: `src/CMakeLists.txt` registers only the PlatformIO app entry component (`src/main.c`). Module code lives under root `components/*`; every component has its own explicit `SRCS` list in `components/<name>/CMakeLists.txt`. There is no glob.
 
 **Module layout**:
-- `src/bsp/` — I2C bus owner (`deskmon_i2c_bus()`), pin/address constants
-- `src/sensors/` — AHT20, TSL2591, ENS160 drivers; share bus via `deskmon_sensor_i2c_add_device()`
-- `src/app/` — config, WiFi APSTA, OTA, HTTP server, diagnostics
-- `src/ui/` — ST7796S/LVGL display bring-up plus reserved button/page stubs
-- `src/storage/` — reserved TF album stub (SD card not initialized)
+- `components/bsp/` — I2C bus owner (`deskmon_i2c_bus()`), pin/address constants; headers in `include/bsp/`, sources in `src/`
+- `components/sensors/` — AHT20, TSL2591, ENS160 drivers; share bus via `deskmon_sensor_i2c_add_device()`; headers in `include/sensors/`, sources in `src/`
+- `components/app/` — config, WiFi APSTA, OTA, HTTP server, diagnostics; headers in `include/app/`, sources in `src/`
+- `components/ui/` — ST7796S/LVGL display bring-up plus reserved button/page stubs; headers in `include/ui/`, sources in `src/`
+- `components/storage/` — reserved TF album stub (SD card not initialized); headers in `include/storage/`, sources in `src/`
 - `src/main.c` — entry point; wires NVS, netif, storage, config, I2C, WiFi, HTTPD, display
 
-**Component dependencies** are declared in `src/idf_component.yml` (LVGL, LittleFS, cJSON, esp_lcd_st7796). PlatformIO auto-resolves them into `managed_components/` (gitignored).
+**Component dependencies** are declared next to the consuming components (`components/ui/idf_component.yml` for LVGL/ST7796, `components/app/idf_component.yml` for LittleFS/cJSON). PlatformIO auto-resolves them into `managed_components/` (gitignored).
 
 **Partition table**: `partitions.csv` — OTA dual-slot + LittleFS data partition.
 
 ## Constraints
 
-- **Display runtime is enabled.** The ST7796S panel uses ESP-IDF `esp_lcd` + LVGL through `src/ui/ui_display.c`, with backlight GPIO output on IO27.
-- **Buttons, touch, SD card, and TF album runtime remain intentionally disabled.** Do not add button/touch interrupt GPIO init, `esp_lcd_touch`, `xpt2046`, `esp_vfs_fat_sd`, `sdspi_*`, or `sdmmc_*` calls in `src/`. `verify_constraints.sh` will fail.
+- **Display runtime is enabled.** The ST7796S panel uses ESP-IDF `esp_lcd` + LVGL through `components/ui/src/ui_display.c`, with backlight GPIO output on IO27.
+- **Buttons, touch, SD card, and TF album runtime remain intentionally disabled.** Do not add button/touch interrupt GPIO init, `esp_lcd_touch`, `xpt2046`, `esp_vfs_fat_sd`, `sdspi_*`, or `sdmmc_*` calls in `src/` or `components/`. `verify_constraints.sh` will fail.
 - **No `/api/diagnostic` singular alias.** The diagnostics endpoint is `/api/diagnostics` only.
 - **Sensor reads are on-demand** (triggered by `/api/diagnostics` requests). `sensor_read_interval_sec` and `sensor_history_retention_hours` are config-only placeholders with no runtime consumer yet.
 

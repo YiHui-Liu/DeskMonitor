@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "src/ui_button.c"
+        "src/ui_display.c"
+        "src/ui_pages.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        bsp
+        esp_driver_gpio
+        esp_driver_spi
+        esp_lcd
+        esp_timer
+        espressif__esp_lcd_st7796
+        lvgl__lvgl
+)

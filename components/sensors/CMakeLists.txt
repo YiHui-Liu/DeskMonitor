@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "src/aht20.c"
+        "src/ens160.c"
+        "src/sensor_i2c.c"
+        "src/tsl2591.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        bsp
+        esp_driver_i2c
+)

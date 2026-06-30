@@ -22,11 +22,13 @@
 
 static const char *TAG = "deskmon_display";
 
-/* Partial render slices for the no-PSRAM ESP32: 320 * 20 pixels * 2 bytes.
+/* Partial render slices for the no-PSRAM ESP32. Buffer stride uses the larger
+ * panel dimension so it fits both portrait and landscape logical orientations.
  * The flush callback waits for ESP LCD's transfer-done callback before letting
  * LVGL reuse the active buffer. */
 #define DISPLAY_BUF_LINES 20
-#define DISPLAY_BUF_BYTES (DESKMON_DISPLAY_WIDTH * DISPLAY_BUF_LINES * LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565))
+#define DISPLAY_BUF_STRIDE (DESKMON_DISPLAY_WIDTH > DESKMON_DISPLAY_HEIGHT ? DESKMON_DISPLAY_WIDTH : DESKMON_DISPLAY_HEIGHT)
+#define DISPLAY_BUF_BYTES (DISPLAY_BUF_STRIDE * DISPLAY_BUF_LINES * LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565))
 
 static esp_lcd_panel_handle_t s_panel;
 static lv_display_t *s_display;
@@ -187,6 +189,16 @@ static esp_err_t init_spi_panel(void) {
   if (err != ESP_OK) {
     goto fail;
   }
+#if DESKMON_DISPLAY_SWAP_XY
+  err = esp_lcd_panel_swap_xy(s_panel, true);
+  if (err != ESP_OK) {
+    goto fail;
+  }
+#endif
+  err = esp_lcd_panel_mirror(s_panel, DESKMON_DISPLAY_MIRROR_X, DESKMON_DISPLAY_MIRROR_Y);
+  if (err != ESP_OK) {
+    goto fail;
+  }
   err = esp_lcd_panel_disp_on_off(s_panel, true);
   if (err != ESP_OK) {
     goto fail;
@@ -215,7 +227,9 @@ static esp_err_t init_lvgl(void) {
   lv_init();
   lv_tick_set_cb(display_tick_cb);
 
-  s_display = lv_display_create(DESKMON_DISPLAY_WIDTH, DESKMON_DISPLAY_HEIGHT);
+  const int32_t hor_res = DESKMON_DISPLAY_SWAP_XY ? DESKMON_DISPLAY_HEIGHT : DESKMON_DISPLAY_WIDTH;
+  const int32_t ver_res = DESKMON_DISPLAY_SWAP_XY ? DESKMON_DISPLAY_WIDTH : DESKMON_DISPLAY_HEIGHT;
+  s_display = lv_display_create(hor_res, ver_res);
   if (s_display == NULL) {
     return ESP_FAIL;
   }

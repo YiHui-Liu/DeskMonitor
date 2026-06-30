@@ -1,41 +1,14 @@
 idf_component_register(
     SRCS
         "main.c"
-        "app/app_config.c"
-        "app/app_config_json.c"
-        "app/app_config_validate.c"
-        "app/app_diagnostics.c"
-        "app/app_httpd.c"
-        "app/app_ota.c"
-        "app/app_storage.c"
-        "app/app_wifi.c"
-        "bsp/bsp_i2c.c"
-        "sensors/aht20.c"
-        "sensors/ens160.c"
-        "sensors/sensor_i2c.c"
-        "sensors/tsl2591.c"
-        "storage/tf_album.c"
-        "ui/ui_button.c"
-        "ui/ui_display.c"
-        "ui/ui_pages.c"
     INCLUDE_DIRS
         "."
     REQUIRES
-        app_update
-        esp_driver_i2c
-        esp_driver_gpio
-        esp_driver_spi
+        app
+        bsp
         esp_event
-        esp_http_client
-        esp_http_server
-        esp_https_ota
         esp_lcd
         esp_netif
-        esp_timer
-        esp_wifi
         nvs_flash
-        espressif__cjson
-        espressif__esp_lcd_st7796
-        joltwallet__littlefs
-        lvgl__lvgl
+        ui
 )

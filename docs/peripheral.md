@@ -13,7 +13,7 @@
 * 背光控制：IO27，高电平点亮
 
 ## I2C 总线
-DeskMonitor 当前使用 ESP-IDF `i2c_master` 驱动访问板载传感器。I2C 总线在 `src/bsp/bsp_i2c.c` 中统一初始化，传感器驱动位于 `src/sensors/`，通过 `deskmon_i2c_bus()` 复用同一条总线。
+DeskMonitor 当前使用 ESP-IDF `i2c_master` 驱动访问板载传感器。I2C 总线在 `components/bsp/src/bsp_i2c.c` 中统一初始化，传感器驱动位于 `components/sensors/src/`，通过 `deskmon_i2c_bus()` 复用同一条总线。
 
 | 信号 | ESP32 引脚 |
 | --- | --- |
