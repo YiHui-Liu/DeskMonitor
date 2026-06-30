@@ -1,0 +1,83 @@
+# =====================================================================
+# ESP-IDF 默认配置（PlatformIO 在 sdkconfig.defaults 之上的覆盖层）
+# ---------------------------------------------------------------------
+# 这个文件里的所有 CONFIG_* 项会作为 menuconfig 的默认值。
+# 如果某项在 sdkconfig.<env> 已存在，defaults 不覆盖（需要 force-rebuild 才生效）。
+# 重要：调整这里的值后，必须 `pio run -t menuconfig` 重新生成或删除 sdkconfig.* 强制重生成。
+# =====================================================================
+
+# ---------- 项目级 ----------
+CONFIG_IDF_TARGET="esp32"
+# 关闭 ESP32 系列独有的扩展（如 PSRAM，本板无 PSRAM）
+CONFIG_ESP32_SPIRAM_SUPPORT=n
+CONFIG_ESP32_TRACEMEM_RESERVE_DRAM=0x0
+
+# ---------- 分区表 ----------
+# 使用自定义分区表（partitions.csv），启用 OTA 双槽
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# ---------- Flash ----------
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+
+# ---------- 日志 ----------
+# 默认 INFO 级别，方便排查；调试时改 DEBUG
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_DEFAULT_LEVEL=3
+CONFIG_LOG_COLORS=y
+CONFIG_LOG_TIMESTAMP_SOURCE_RTOS=y
+
+# ---------- FreeRTOS ----------
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
+
+# ---------- WiFi / lwIP（M4 用）----------
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_NVS_ENABLED=y
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+CONFIG_ESP_WIFI_STA_DISCONNECTED_PM_BEACON=n
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y
+CONFIG_ESP_WIFI_TX_BA_WIN=6
+CONFIG_ESP_WIFI_RX_BA_WIN=6
+CONFIG_ESP_WIFI_IRAM_OPT=n          # 关闭 WiFi IRAM 优化，省 ~20KB RAM
+CONFIG_LWIP_MAX_SOCKETS=10
+CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES=y
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+
+# ---------- HTTP Server（M5 用）----------
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+CONFIG_HTTPD_PURGE_BUF_LEN=64
+
+# ---------- mbedTLS / HTTPS（暂时关掉省 Flash，QWeather 先用 HTTP）----------
+CONFIG_MBEDTLS_DTLS=n
+CONFIG_MBEDTLS_TLS_SERVER=n        # 我们不做 HTTPS server
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_ESP_HTTPS_OTA_ENABLE_PARTIAL_DOWNLOAD=y
+
+# ---------- 文件系统 ----------
+# LittleFS 复用 SPIFFS 类型分区，挂载时指定 LittleFS 驱动
+CONFIG_VFS_SUPPORT_DIR=y
+
+# ---------- LVGL v9（通过 Component Registry 拉取后生效）----------
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_COLOR_16_SWAP=y            # ESP32 SPI 发送字节序与 RGB565 不一致，需要 swap
+CONFIG_LV_FONT_MONTSERRAT_14=y       # 内置 14px 拉丁字体（约 14KB）
+CONFIG_LV_FONT_MONTSERRAT_16=y       # 16px 拉丁字体（英文 UI 用，约 18KB）
+CONFIG_LV_USE_PERF_MONITOR=y         # 右下角显示 FPS / 内存（开发期）
+CONFIG_LV_USE_OBSERVER=y             # v9 新特性，属性变化通知
+CONFIG_LV_MEM_SIZE_KILOBYTES=64      # LVGL 内部堆（widgets 分配用）
+CONFIG_LV_MEM_ADR=0                  # 0 = 让 LVGL 用 malloc
+CONFIG_LV_OS_FREERTOS=y              # 告诉 LVGL 我们用 FreeRTOS（v9 用 choice 选项）
+CONFIG_LV_USE_FREERTOS_TASK_NOTIFY=y
+
+# ---------- 编译优化 ----------
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y      # 体积优先（OTA slot 1.688MB 紧）
+CONFIG_COMPILER_WARN_WRITE_STRINGS=y
+CONFIG_COMPILER_STACK_CHECK_MODE_NORMAL=y
