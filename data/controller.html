@@ -37,16 +37,20 @@
             <label><input name="album" type="checkbox">相册</label>
         </fieldset>
 
-        <button type="submit">Save / 保存</button> <span id="result"></span>
+        <button type="submit">保存</button> <span id="result"></span>
     </form>
 
     <form id="ota">
         <fieldset>
             <legend>OTA</legend>
             <label>固件链接 <input name="url"></label>
-            <button type="submit">Start OTA</button>
+            <button type="submit">更新</button>
         </fieldset>
     </form>
+
+    <section>
+        <span>开机时间: <span id="update_time">加载中</span></span>
+    </section>
 
     <section>
         <h2>传感器</h2>
@@ -70,37 +74,21 @@
     </section>
 
     <section>
-        <h2>系统</h2>
-        <h3>内存</h3>
-        <table border="1" cellpadding="4">
-            <tbody id="memory_status">
-                <tr>
-                    <td>加载中</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h3>存储</h3>
-        <table border="1" cellpadding="4">
-            <tbody id="storage_status">
-                <tr>
-                    <td>加载中</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h3>分区</h3>
+        <h2>内存/存储</h2>
         <table border="1" cellpadding="4">
             <thead>
                 <tr>
                     <th>标签</th>
-                    <th>Type</th>
-                    <th>Subtype</th>
+                    <th>类型</th>
+                    <th>子类型</th>
                     <th>地址</th>
                     <th>大小</th>
+                    <th>已用</th>
+                    <th>可用</th>
+                    <th>其他</th>
                 </tr>
             </thead>
-            <tbody id="partition_status">
+            <tbody id="memory_status">
                 <tr>
                     <td colspan="5">加载中</td>
                 </tr>
@@ -110,23 +98,32 @@
 
     <script>
         const $ = n => document.querySelector('[name=' + n + ']');
-        const bytes = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MiB' : n >= 1024 ? (n / 1024).toFixed(1) + ' KiB' : n + ' B';
+        const bytes = n => n >= 1024 ? (n / 1024).toFixed(1) + ' KiB' : n + ' B';
 
         async function loadDiagnostics() {
             const r = await fetch('/api/diagnostics');
             const d = await r.json();
 
-            const rows = d.quantities.map(x => `<tr><td>${x.name}</td><td>${x.sensor}</td><td>${x.address}</td><td>${x.status}</td><td>${x.reading}</td><td>${x.unit}</td></tr>`).join('');
+            document.getElementById('update_time').textContent = d.uptime_ms / 1000 + 's';
+
+            const rows = d.quantities.map(x => `<tr><td>${x.name}</td><td>${x.sensor}</td><td>${x.address}</td><td>${x.status}</td><td>${x.reading.toFixed(2)}</td><td>${x.unit}</td></tr>`).join('');
             document.getElementById('sensor_status').innerHTML = rows || '<tr><td colspan="6">无传感器</td></tr>';
 
             const m = d.system.memory;
-            document.getElementById('memory_status').innerHTML = `<tr><th>可用</th><td>${bytes(m.free_heap_bytes)}</td></tr><tr><th>最小可用</th><td>${bytes(m.minimum_free_heap_bytes)}</td></tr><tr><th>最大块</th><td>${bytes(m.largest_free_block_bytes)}</td></tr>`;
-
             const s = d.system.storage;
-            document.getElementById('storage_status').innerHTML = `<tr><th>标签</th><td>${s.label}</td></tr><tr><th>状态</th><td>${s.status}</td></tr><tr><th>已用</th><td>${bytes(s.used_bytes)} / ${bytes(s.total_bytes)}</td></tr><tr><th>可用</th><td>${bytes(s.free_bytes)}</td></tr>`;
+            const part = d.system.partitions.filter(p => p.label !== 'littlefs');
+            const fs = d.system.partitions.filter(p => p.label === 'littlefs')[0];
+            const rp = d.system.running_partition;
 
-            document.getElementById('partition_status').innerHTML = d.system.partitions.map(p => `<tr><td>${p.label}</td><td>${p.type}</td><td>${p.subtype}</td><td>0x${p.address.toString(16)}</td><td>${bytes(p.size_bytes)}</td></tr>`).join('') || '<tr><td colspan="5">无分区</td></tr>';
+            document.getElementById('memory_status').innerHTML = `<tr><td>Heap</td><td>内存</td><td>-</td><td>-</td><td>${bytes(m.total_heap_bytes)}</td><td>${bytes(m.used_heap_bytes)}</td><td>${bytes(m.free_heap_bytes)}</td><td>最小可用: ${bytes(m.minimum_free_heap_bytes)}, 最大块: ${bytes(m.largest_free_block_bytes)}</td></tr>`;
+
+            document.getElementById('memory_status').innerHTML += part.map(p => `<tr><td>${p.label}</td><td>${p.type}</td><td>${p.subtype}</td><td>0x${p.address.toString(16)}</td><td>${bytes(p.size_bytes)}</td><td>${p.label === rp.label ? bytes(rp.size) : '-'}</td><td>-</td><td>${p.label === rp.label ? '运行分区' : '-'}</td></tr>`).join('') || `<tr><td colspan="5">无分区</td><td>-</td><td>-</td><td>-</td></tr>`;
+
+            document.getElementById('memory_status').innerHTML += `<tr><td>${s.label}</td><td>存储 ${fs.type}</td><td>${fs.subtype}</td><td>0x${fs.address.toString(16)}</td><td>${bytes(s.total_bytes)}</td><td>${bytes(s.used_bytes)}</td><td>${bytes(s.free_bytes)}</td><td>状态: ${s.status}</td></tr>`;
         }
+
+        loadDiagnostics();
+        diagnosticsInterval = setInterval(loadDiagnostics, 10000);
 
         fetch('/api/config')
             .then(r => r.json())
@@ -137,10 +134,9 @@
                 for (const k in c.pages) {
                     $(k).checked = c.pages[k];
                 }
+                clearInterval(diagnosticsInterval);
+                diagnosticsInterval = setInterval(loadDiagnostics, Number($('sensor_read_interval_sec').value) * 1000);
             });
-
-        loadDiagnostics();
-        setInterval(loadDiagnostics, 10000);
 
         document.getElementById('cfg').onsubmit = async e => {
             e.preventDefault();
@@ -163,6 +159,8 @@
             };
             const r = await fetch('/api/config', { method: 'POST', body: JSON.stringify(b) });
             document.getElementById('result').textContent = r.ok ? '已保存' : '保存失败';
+            clearInterval(diagnosticsInterval);
+            diagnosticsInterval = setInterval(loadDiagnostics, Number($('sensor_read_interval_sec').value) * 1000);
         };
 
         document.getElementById('qweather_test').onclick = async () => {

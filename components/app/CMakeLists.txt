@@ -18,6 +18,7 @@ idf_component_register(
         esp_http_server
         esp_https_ota
         esp_netif
+        esp_timer
         esp_wifi
         espressif__cjson
         joltwallet__littlefs

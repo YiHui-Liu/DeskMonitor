@@ -8,10 +8,13 @@
 #include <cJSON.h>
 #include <esp_err.h>
 #include <esp_heap_caps.h>
+#include <esp_image_format.h>
 #include <esp_littlefs.h>
 #include <esp_log.h>
+#include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 
 #include "app/app_storage.h"
 #include "app/app_wifi.h"
@@ -23,6 +26,8 @@
 
 static const char *TAG = "deskmon_diag";
 static const int I2C_PROBE_TIMEOUT_MS = 50;
+static char *IMAGE_NAME = NULL;
+static uint32_t IMAGE_SIZE;
 
 static bool i2c_device_found(unsigned address) {
   return deskmon_i2c_probe((uint16_t)address, I2C_PROBE_TIMEOUT_MS) == ESP_OK;
@@ -162,10 +167,17 @@ static void add_io_section(cJSON *root) {
 }
 
 static void add_memory_section(cJSON *system) {
+  multi_heap_info_t info;
+  heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+  size_t total_heap = info.total_allocated_bytes + info.total_free_bytes;
+  size_t used_heap = info.total_allocated_bytes;
+
   cJSON *memory = cJSON_AddObjectToObject(system, "memory");
-  cJSON_AddNumberToObject(memory, "free_heap_bytes", esp_get_free_heap_size());
-  cJSON_AddNumberToObject(memory, "minimum_free_heap_bytes", esp_get_minimum_free_heap_size());
-  cJSON_AddNumberToObject(memory, "largest_free_block_bytes", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+  cJSON_AddNumberToObject(memory, "total_heap_bytes", total_heap);
+  cJSON_AddNumberToObject(memory, "used_heap_bytes", used_heap);
+  cJSON_AddNumberToObject(memory, "free_heap_bytes", info.total_free_bytes);
+  cJSON_AddNumberToObject(memory, "minimum_free_heap_bytes", info.minimum_free_bytes);
+  cJSON_AddNumberToObject(memory, "largest_free_block_bytes", info.largest_free_block);
 }
 
 static void add_storage_section(cJSON *system) {
@@ -200,11 +212,30 @@ static void add_partitions_section(cJSON *system) {
   esp_partition_iterator_release(it);
 }
 
+static void add_active_image_section(cJSON *system) {
+  if (IMAGE_NAME == NULL) {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_image_metadata_t data;
+    const esp_partition_pos_t part_pos = {
+        .offset = running->address,
+        .size = running->size,
+    };
+    esp_image_verify(ESP_IMAGE_VERIFY, &part_pos, &data);
+    IMAGE_NAME = strdup(running->label);
+    IMAGE_SIZE = data.image_len;
+  }
+
+  cJSON *running_partition = cJSON_AddObjectToObject(system, "running_partition");
+  cJSON_AddStringToObject(running_partition, "label", IMAGE_NAME);
+  cJSON_AddNumberToObject(running_partition, "size", IMAGE_SIZE);
+}
+
 static void add_system_section(cJSON *root) {
   cJSON *system = cJSON_AddObjectToObject(root, "system");
   add_memory_section(system);
   add_storage_section(system);
   add_partitions_section(system);
+  add_active_image_section(system);
 }
 
 char *deskmon_diagnostics_json(void) {
@@ -212,6 +243,9 @@ char *deskmon_diagnostics_json(void) {
   if (root == NULL) {
     return NULL;
   }
+
+  int64_t uptime_ms = esp_timer_get_time() / 1000;
+  cJSON_AddNumberToObject(root, "uptime_ms", uptime_ms);
 
   add_wifi_section(root);
   add_quantities_section(root);
