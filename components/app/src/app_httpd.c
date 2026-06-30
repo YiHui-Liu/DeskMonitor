@@ -32,98 +32,6 @@ static const TickType_t QWEATHER_FETCH_TIMEOUT_TICKS = pdMS_TO_TICKS(6000);
 static httpd_handle_t s_server;
 static deskmon_config_t *s_config;
 
-static const char *CONTROL_PAGE =
-    "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\">"
-    "<title>Desk Monitor Control</title>"
-    "<h1>Desk Monitor</h1>"
-    "<form id=\"cfg\">"
-    "<fieldset><legend>WiFi</legend>"
-    "<label>SSID <input name=\"wifi_ssid\"></label><br>"
-    "<label>Password <input name=\"wifi_password\" type=\"password\"></label>"
-    "</fieldset>"
-    "<fieldset><legend>和风天气</legend>"
-    "<label>API Key <input name=\"qweather_api_key\"></label><br>"
-    "<label>Location <input name=\"qweather_location\"></label> "
-    "<button id=\"qweather_test\" type=\"button\">测试</button><br>"
-    "<pre id=\"qweather_result\"></pre>"
-    "</fieldset>"
-    "<fieldset><legend>页面</legend>"
-    "<label>汇总信息 <input name=\"page_summary_note\"></label><br>"
-    "<label>轮播间隔 [s] <input name=\"carousel_interval_sec\" type=\"number\" min=\"5\" "
-    "max=\"3600\"></label><br>"
-    "<label>传感器读取间隔 [s] <input name=\"sensor_read_interval_sec\" type=\"number\" min=\"1\" "
-    "max=\"3600\"></label><br>"
-    "<label>历史保留时长 [h] <input name=\"sensor_history_retention_hours\" type=\"number\" "
-    "min=\"1\" max=\"720\"></label><br>"
-    "<label><input name=\"summary\" type=\"checkbox\">汇总</label>"
-    "<label><input name=\"weather\" type=\"checkbox\">天气</label>"
-    "<label><input name=\"sensor\" type=\"checkbox\">传感器</label>"
-    "<label><input name=\"memo\" type=\"checkbox\">备忘录</label>"
-    "<label><input name=\"album\" type=\"checkbox\">相册</label>"
-    "</fieldset>"
-    "<button type=\"submit\">Save / 保存</button> <span id=\"result\"></span>"
-    "</form>"
-    "<form id=\"ota\"><fieldset><legend>OTA</legend>"
-    "<label>固件链接 <input name=\"url\"></label>"
-    "<button type=\"submit\">Start OTA</button>"
-    "</fieldset></form>"
-    "<section><h2>传感器</h2>"
-    "<table border=\"1\" cellpadding=\"4\"><thead><tr>"
-    "<th>名称</th><th>传感器</th><th>地址</th><th>状态</th><th>读数</th><th>单位</th>"
-    "</tr></thead><tbody id=\"sensor_status\"><tr><td colspan=\"6\">加载中</td></tr></tbody></table>"
-    "</section>"
-    "<section><h2>系统</h2>"
-    "<h3>内存</h3><table border=\"1\" cellpadding=\"4\"><tbody id=\"memory_status\"><tr><td>"
-    "加载中</td></tr></tbody></table>"
-    "<h3>存储</h3><table border=\"1\" cellpadding=\"4\"><tbody id=\"storage_status\"><tr><td>"
-    "加载中</td></tr></tbody></table>"
-    "<h3>分区</h3><table border=\"1\" "
-    "cellpadding=\"4\"><thead><tr><th>标签</th><th>Type</th><th>Subtype</th><th>地址</th><th>大小</th></tr></"
-    "thead><tbody "
-    "id=\"partition_status\"><tr><td colspan=\"5\">加载中</td></tr></tbody></table>"
-    "</section>"
-    "<script>"
-    "const $=n=>document.querySelector('[name='+n+']');"
-    "const bytes=n=>n>=1048576?(n/1048576).toFixed(1)+' MiB':n>=1024?(n/1024).toFixed(1)+' KiB':n+' B';"
-    "async function loadDiagnostics(){const r=await fetch('/api/diagnostics');const d=await r.json();const "
-    "rows=d.quantities.map(x=>`<tr><td>${x.name}</td><td>${x.sensor}</td><td>${x.address}</td><td>${x.status}</"
-    "td><td>${x.reading}</td><td>${x.unit}</td></"
-    "tr>`).join('');document.getElementById('sensor_status').innerHTML=rows||'<tr><td "
-    "colspan=\"6\">无传感器</td></tr>';const "
-    "m=d.system.memory;document.getElementById('memory_status').innerHTML=`<tr><th>可用</"
-    "th><td>${bytes(m.free_heap_bytes)}</td></tr><tr><th>最小可用</th><td>${bytes(m.minimum_free_heap_bytes)}</td></"
-    "tr><tr><th>最大块</th><td>${bytes(m.largest_free_block_bytes)}</td></tr>`;const "
-    "s=d.system.storage;document.getElementById('storage_status').innerHTML=`<tr><th>标签</th><td>${s.label}</td></"
-    "tr><tr><th>状态</th><td>${s.status}</td></tr><tr><th>已用</th><td>${bytes(s.used_bytes)} / "
-    "${bytes(s.total_bytes)}</td></tr><tr><th>可用</th><td>${bytes(s.free_bytes)}</td></"
-    "tr>`;document.getElementById('partition_status').innerHTML=d.system.partitions.map(p=>`<tr><td>${p.label}</"
-    "td><td>${p.type}</td><td>${p.subtype}</td><td>0x${p.address.toString(16)}</td><td>${bytes(p.size_bytes)}</td></"
-    "tr>`).join('')||'<tr><td colspan=\"5\">无分区</td></tr>';};"
-    "fetch('/api/config').then(r=>r.json()).then(c=>{for(const k of "
-    "['wifi_ssid','wifi_password','qweather_api_key','qweather_location','page_summary_note','carousel_interval_sec','"
-    "sensor_read_interval_sec','sensor_history_retention_hours'])$(k).value=c[k]||'';for(const k in "
-    "c.pages)$(k).checked=c.pages[k];});"
-    "loadDiagnostics();setInterval(loadDiagnostics,10000);"
-    "document.getElementById('cfg').onsubmit=async e=>{e.preventDefault();const "
-    "b={wifi_ssid:$('wifi_ssid').value,wifi_password:$('wifi_password').value,qweather_api_key:$('qweather_api_key')."
-    "value,qweather_location:$('qweather_location').value,page_summary_note:$('page_summary_note').value,carousel_"
-    "interval_sec:Number($('carousel_interval_sec').value),sensor_read_interval_sec:Number($('sensor_read_interval_sec'"
-    ").value),sensor_history_retention_hours:Number($('sensor_history_retention_hours').value),pages:{summary:$('"
-    "summary').checked,weather:$('weather').checked,sensor:$('sensor').checked,memo:$('memo').checked,album:$('album')."
-    "checked}};const r=await "
-    "fetch('/api/"
-    "config',{method:'POST',body:JSON.stringify(b)});document.getElementById('result').textContent=r.ok?'已保存':'"
-    "保存失败';};"
-    "document.getElementById('qweather_test').onclick=async()=>{const "
-    "out=document.getElementById('qweather_result');out.textContent='测试中...';const r=await "
-    "fetch('/api/qweather/"
-    "test',{method:'POST',body:JSON.stringify({qweather_api_key:$('qweather_api_key').value,qweather_location:$('"
-    "qweather_location').value})});const d=await r.json();out.textContent=JSON.stringify(d,null,2);};"
-    "document.getElementById('ota').onsubmit=async e=>{e.preventDefault();await "
-    "fetch('/api/ota',{method:'POST',body:JSON.stringify({url:$('url').value})});};"
-    "</script>"
-    "</html>";
-
 static esp_err_t send_json(httpd_req_t *req, const char *json) {
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
@@ -315,16 +223,35 @@ static esp_err_t read_body(httpd_req_t *req, char **body) {
 }
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
+  FILE *file = fopen("/littlefs/controller.html", "r");
+  if (file == NULL) {
+    ESP_LOGE(TAG, "controller.html not found");
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Control Page Not Found");
+    return ESP_FAIL;
+  }
   httpd_resp_set_type(req, "text/html; charset=utf-8");
-  return httpd_resp_send(req, CONTROL_PAGE, HTTPD_RESP_USE_STRLEN);
-}
 
-static esp_err_t health_get_handler(httpd_req_t *req) {
-  deskmon_wifi_status_t wifi = deskmon_wifi_status();
-  char response[128];
-  snprintf(response, sizeof(response), "{\"sta_connected\":%s,\"ap_started\":%s,\"sta_ip\":\"%s\"}",
-           wifi.sta_connected ? "true" : "false", wifi.ap_started ? "true" : "false", wifi.sta_ip);
-  return send_json(req, response);
+  size_t read_size;
+  char chunk_buffer[1024];
+  while ((read_size = fread(chunk_buffer, 1, sizeof(chunk_buffer), file)) > 0) {
+    esp_err_t err = httpd_resp_send_chunk(req, chunk_buffer, read_size);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to send chunk: %s", esp_err_to_name(err));
+      fclose(file);
+      return err;
+    }
+  }
+
+  if (ferror(file)) {
+    ESP_LOGE(TAG, "Error reading controller.html");
+    fclose(file);
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Error reading control page");
+    return ESP_FAIL;
+  }
+
+  fclose(file);
+  httpd_resp_send_chunk(req, NULL, 0);
+  return ESP_OK;
 }
 
 static esp_err_t config_get_handler(httpd_req_t *req) {
