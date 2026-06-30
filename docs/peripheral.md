@@ -1,31 +1,100 @@
-# Peripheral
-## I2C
-* SDA: IO32
-* SCL: IO25
+# 外设说明
 
-### TSL 25911 Light Sensor
-* I2C Address: 0x29
-* Quantity: Light
-* Range: 0 - 88000 Lux
-* Sensitivity: 188 uLux
+## I2C 总线
 
-### ENS 160 && AHT 20
-* I2C Address: 0x53
+DeskMonitor 当前使用 ESP-IDF `i2c_master` 驱动访问板载传感器。I2C 总线在 `src/bsp/bsp_i2c.c` 中统一初始化，传感器驱动位于 `src/sensors/`，通过 `deskmon_i2c_bus()` 复用同一条总线。
 
-#### ENS 160 Gas Sensor
-* Quantity: TVOC, eCO2, AQI
-* Range: 0 - 65535 ppb
+| 信号 | ESP32 引脚 |
+| --- | --- |
+| SDA | IO32 |
+| SCL | IO25 |
 
-#### AHT 20 Temperature and Humidity Sensor
-* Quantity: Temperature, Humidity
-* Range: -40 to 85 °C, 0 to 100% RH
-* Sensitivity: ±0.3 °C, ±2% RH
-* Resolution: 0.01 °C, 0.024% RH
+当前传感器读取是按需触发的：访问 `/api/diagnostics` 或打开 Web 控制台的传感器表格时，固件会读取一次传感器。暂时没有启用后台采样和历史存储。
+
+## 传感器
+
+### TSL2591 光照传感器
+
+| 项目 | 值 |
+| --- | --- |
+| I2C 地址 | `0x29` |
+| 物理量 | 光照强度 |
+| 范围 | `0 - 88000 lux` |
+| 灵敏度 | `188 uLux` |
+
+读取流程：
+
+1. 读取 ID 寄存器 `0x12`，期望值为 `0x50`。
+2. 上电，设置 100 ms 积分时间和低增益。
+3. 开启 ALS 测量并等待积分完成。
+4. 从 `0x14` 起读取 CH0 和 CH1。
+5. 按常用双公式近似计算 lux，并把负数结果钳制为 `0`。
+6. 读取完成后关闭传感器。
+
+### ENS160 空气质量传感器
+
+| 项目 | 值 |
+| --- | --- |
+| I2C 地址 | `0x53` |
+| 物理量 | AQI、TVOC、eCO2 |
+
+| 物理量 | 范围 | 分辨率 | 单位 |
+| --- | --- | --- | --- |
+| AQI | `1 - 5` | `1` | index |
+| TVOC | `0 - 65000` | `1` | ppb |
+| eCO2 | `400 - 65000` | `1` | ppm |
+
+读取流程：
+
+1. 读取 Part ID 寄存器 `0x00..0x01`，期望值为 `0x0160`。
+2. 将工作模式寄存器 `0x10` 设置为标准模式 `0x02`。
+3. 轮询 `DATA_STATUS`，确认无错误、有效性为正常状态，并且有新数据。
+4. 从 `0x21` 起读取 AQI、TVOC 和 eCO2。
+5. TVOC 和 eCO2 按小端序解析为 16 位数值。
+
+### AHT20 温湿度传感器
+
+| 项目 | 值 |
+| --- | --- |
+| I2C 地址 | `0x38` |
+| 物理量 | 温度、湿度 |
+
+| 物理量 | 范围 | 精度 | 分辨率 | 单位 |
+| --- | --- | --- | --- | --- |
+| 温度 | `-40 - 85` | `±0.3` | `0.01` | °C |
+| 湿度 | `0 - 100` | `±2` | `0.024` | %RH |
+
+读取流程：
+
+1. 读取 1 字节状态。
+2. 如果校准位 `0x08` 未置位，发送初始化命令 `BE 08 00`。
+3. 发送测量触发命令 `AC 33 00`。
+4. 等待忙位 `0x80` 清零。
+5. 读取 6 字节测量数据，并解析 20 位湿度和 20 位温度原始值。
+
+换算公式：
+
+```text
+humidity_rh = humidity_raw * 100 / 2^20
+temperature_c = temperature_raw * 200 / 2^20 - 50
+```
 
 ## IO
-### Buttom 1
-* OUT: IO35
-* GND: IO39 (temporary)
 
-### Buttom 2
-Not connected yet
+### Button 1
+
+| 项目 | 值 |
+| --- | --- |
+| OUT | IO35 |
+| 当前状态 | 预留，未初始化 |
+
+### Button 2
+
+| 项目 | 值 |
+| --- | --- |
+| OUT | IO39 |
+| 当前状态 | 未连接，未初始化 |
+
+### 显示屏与 TF 相册
+
+显示屏、按键和 TF 相册功能当前只保留硬件定义，不在运行时初始化。启用这些功能前，需要先确认引脚、驱动和资源占用。
