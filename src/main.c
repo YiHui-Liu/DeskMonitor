@@ -1,14 +1,15 @@
+#include <esp_check.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_netif.h>
+#include <nvs_flash.h>
+
 #include "app/app_config.h"
 #include "app/app_diagnostics.h"
 #include "app/app_httpd.h"
 #include "app/app_storage.h"
 #include "app/app_wifi.h"
 #include "bsp/bsp_i2c.h"
-#include "esp_check.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_netif.h"
-#include "nvs_flash.h"
 #include "ui/ui_display.h"
 
 static const char *TAG = "desk_monitor";

@@ -15,7 +15,7 @@ void deskmon_config_set_defaults(deskmon_config_t *config) {
 
   memset(config, 0, sizeof(*config));
   strcpy(config->qweather_location, "101010100");
-  strcpy(config->page_summary_note, "Desk Monitor / 桌面监视器");
+  strcpy(config->page_summary_note, "Desk Monitor");
   config->carousel_interval_sec = DESKMON_CONFIG_DEFAULT_CAROUSEL_SEC;
   config->sensor_read_interval_sec = DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC;
   config->sensor_history_retention_hours = DESKMON_CONFIG_DEFAULT_SENSOR_HISTORY_HOURS;

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "cJSON.h"
+#include <cJSON.h>
 
 static void copy_json_string(cJSON *root, const char *key, char *target, size_t target_size) {
   cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);

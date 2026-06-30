@@ -4,10 +4,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <esp_err.h>
+#include <esp_log.h>
+
 #include "app/app_config_json.h"
 #include "app/app_storage.h"
-#include "esp_err.h"
-#include "esp_log.h"
 
 static const char *TAG = "deskmon_config";
 

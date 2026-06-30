@@ -2,8 +2,9 @@
 
 #include <stdbool.h>
 
+#include <esp_err.h>
+
 #include "app/app_config.h"
-#include "esp_err.h"
 
 typedef struct {
   bool sta_connected;

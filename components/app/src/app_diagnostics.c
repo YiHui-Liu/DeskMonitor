@@ -5,16 +5,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cJSON.h>
+#include <esp_err.h>
+#include <esp_heap_caps.h>
+#include <esp_littlefs.h>
+#include <esp_log.h>
+#include <esp_partition.h>
+#include <esp_system.h>
+
 #include "app/app_storage.h"
 #include "bsp/bsp_i2c.h"
 #include "bsp/bsp_io.h"
-#include "cJSON.h"
-#include "esp_err.h"
-#include "esp_heap_caps.h"
-#include "esp_littlefs.h"
-#include "esp_log.h"
-#include "esp_partition.h"
-#include "esp_system.h"
 #include "sensors/aht20.h"
 #include "sensors/ens160.h"
 #include "sensors/tsl2591.h"
