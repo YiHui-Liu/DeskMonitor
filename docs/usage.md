@@ -14,7 +14,7 @@ Web 控制台当前包含：
 | 区域 | 用途 |
 | --- | --- |
 | WiFi | 设置家庭 WiFi 的 SSID 和密码。 |
-| QWeather / 和风天气 | 设置和风天气 API Key 与位置 ID。 |
+| QWeather / 和风天气 | 设置和风天气 API Key 与位置 ID，并可用当前填写值测试实时天气接口。 |
 | Pages / 页面 | 设置页面启用状态、汇总文字、轮播时间、传感器读取周期和历史保留时间。 |
 | OTA | 填写固件 HTTPS URL 并触发 OTA。 |
 | Sensors / 传感器 | 查看 `/api/diagnostics` 返回的传感器物理量读数。 |
@@ -55,6 +55,23 @@ Web 控制台和 API 都使用 `/api/diagnostics`。接口返回顶层 `quantiti
 Web 控制台传感器表格列顺序为：`Name / Sensor / Address / Status / Reading / Unit`。
 
 系统区域会显示空闲堆内存、历史最低空闲堆、最大连续空闲块、LittleFS 已用/总量/可用空间，以及分区标签、类型、子类型、地址和大小。
+
+## 和风天气测试
+
+QWeather / 和风天气区域的 `Test / 测试` 按钮会使用输入框里当前填写的 `qweather_api_key` 和 `qweather_location` 调用：
+
+```http
+POST /api/qweather/test
+Content-Type: application/json
+```
+
+请求示例：
+
+```json
+{"qweather_api_key":"your-key","qweather_location":"101010100"}
+```
+
+固件会向和风天气实时天气接口 `/v7/weather/now` 发起 HTTP 请求，并把 HTTP 状态码和返回体展示在页面中。测试不会自动保存配置。
 
 ## 修改设置
 
