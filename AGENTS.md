@@ -13,7 +13,7 @@ pio run -e esp32dev                    # firmware build (authoritative compile g
 pio run -e esp32dev -t buildfs         # LittleFS image from data/
 pio run -e esp32dev -t menuconfig      # adjust sdkconfig (regenerates sdkconfig.esp32dev)
 bash test/run_config_validation.sh     # host-runnable config validation (cc -DUNIT_TEST)
-bash test/verify_constraints.sh        # static check: no LCD/GPIO/SD/LVGL runtime init
+bash test/verify_constraints.sh        # static check: display enabled; SD/buttons/touch runtime init still off
 ```
 
 Run all four before declaring work done. `pio run -e esp32dev` is the authoritative compile gate — `lsp_diagnostics` is unreliable because clangd lacks ESP-IDF include paths and xtensa toolchain flags.
@@ -28,8 +28,9 @@ After changing `sdkconfig.defaults`, delete `sdkconfig.esp32dev` (gitignored) to
 - `src/bsp/` — I2C bus owner (`deskmon_i2c_bus()`), pin/address constants
 - `src/sensors/` — AHT20, TSL2591, ENS160 drivers; share bus via `deskmon_sensor_i2c_add_device()`
 - `src/app/` — config, WiFi APSTA, OTA, HTTP server, diagnostics
-- `src/ui/`, `src/storage/` — reserved stubs (display/buttons/TF album not initialized)
-- `src/main.c` — entry point; wires NVS, netif, storage, config, I2C, WiFi, HTTPD
+- `src/ui/` — ST7796S/LVGL display bring-up plus reserved button/page stubs
+- `src/storage/` — reserved TF album stub (SD card not initialized)
+- `src/main.c` — entry point; wires NVS, netif, storage, config, I2C, WiFi, HTTPD, display
 
 **Component dependencies** are declared in `src/idf_component.yml` (LVGL, LittleFS, cJSON, esp_lcd_st7796). PlatformIO auto-resolves them into `managed_components/` (gitignored).
 
@@ -37,7 +38,8 @@ After changing `sdkconfig.defaults`, delete `sdkconfig.esp32dev` (gitignored) to
 
 ## Constraints
 
-- **Display, buttons, SD card, and LVGL runtime are intentionally disabled.** Do not add `esp_lcd_*`, `gpio_config`, `sdmmc_*`, `lv_init()`, or `lv_timer_handler()` calls in `src/`. `verify_constraints.sh` will fail.
+- **Display runtime is enabled.** The ST7796S panel uses ESP-IDF `esp_lcd` + LVGL through `src/ui/ui_display.c`, with backlight GPIO output on IO27.
+- **Buttons, touch, SD card, and TF album runtime remain intentionally disabled.** Do not add button/touch interrupt GPIO init, `esp_lcd_touch`, `xpt2046`, `esp_vfs_fat_sd`, `sdspi_*`, or `sdmmc_*` calls in `src/`. `verify_constraints.sh` will fail.
 - **No `/api/diagnostic` singular alias.** The diagnostics endpoint is `/api/diagnostics` only.
 - **Sensor reads are on-demand** (triggered by `/api/diagnostics` requests). `sensor_read_interval_sec` and `sensor_history_retention_hours` are config-only placeholders with no runtime consumer yet.
 

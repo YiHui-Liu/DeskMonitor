@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-forbidden='esp_lcd_new_panel|esp_lcd_panel_io|esp_lcd_panel_init|gpio_config|gpio_set_direction|gpio_intr_enable|esp_vfs_fat_sd|sdspi_|sdmmc_host_init|sdmmc_card_init'
+# Display (SPI ST7796S + LVGL) is enabled. SD/TF card, touch, and button
+# interrupt GPIO remain disabled at runtime.
 
-if rg -n -g '*.c' -g '*.h' "$forbidden" src; then
-  printf 'disabled hardware init symbol found\n' >&2
+sd_forbidden='esp_vfs_fat_sd|sdspi_|sdmmc_host_init|sdmmc_card_init|sdmmc_init|esp_lcd_panel_sd'
+if rg -n -g '*.c' -g '*.h' "$sd_forbidden" src; then
+  printf 'SD/TF card init symbol found\n' >&2
   exit 1
 fi
 
-if rg -n -g '*.c' -g '*.h' 'lv_init\(|lv_timer_handler\(' src; then
-  printf 'LVGL runtime init found before display enablement\n' >&2
+intr_forbidden='gpio_intr_enable|gpio_isr_handler_add|gpio_install_isr_service|gpio_evt_queue|xpt2046|esp_lcd_touch'
+if rg -n -g '*.c' -g '*.h' "$intr_forbidden" src; then
+  printf 'button/touch interrupt GPIO init found\n' >&2
   exit 1
 fi
 
-printf 'disabled hardware constraints verified\n'
+if rg -n -g '*.h' 'define[[:space:]]+DESKMON_BUTTONS_ENABLED[[:space:]]+[1-9]' src; then
+  printf 'buttons enabled before wiring is final\n' >&2
+  exit 1
+fi
+
+printf 'hardware constraints verified (display enabled; SD/buttons/touch off)\n'

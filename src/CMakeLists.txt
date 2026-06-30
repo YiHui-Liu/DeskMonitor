@@ -29,10 +29,13 @@ idf_component_register(
         esp_http_client
         esp_http_server
         esp_https_ota
+        esp_lcd
         esp_netif
+        esp_timer
         esp_wifi
         nvs_flash
         espressif__cjson
+        espressif__esp_lcd_st7796
         joltwallet__littlefs
         lvgl__lvgl
 )

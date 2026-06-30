@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "nvs_flash.h"
+#include "ui/ui_display.h"
 
 static const char *TAG = "desk_monitor";
 static deskmon_config_t s_config;
@@ -33,5 +34,10 @@ void app_main(void) {
   ESP_ERROR_CHECK(deskmon_wifi_start(&s_config));
   ESP_ERROR_CHECK(deskmon_httpd_start(&s_config));
 
-  ESP_LOGI(TAG, "display, buttons, and TF album are reserved but not initialized");
+  esp_err_t display_err = deskmon_display_init();
+  if (display_err != ESP_OK) {
+    ESP_LOGW(TAG, "display init skipped (%s); web diagnostics remain available", esp_err_to_name(display_err));
+  }
+
+  ESP_LOGI(TAG, "buttons and TF album remain reserved; display brought up above");
 }
