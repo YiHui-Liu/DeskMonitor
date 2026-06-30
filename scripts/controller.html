@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Desk Monitor</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            background: #eef2f7;
+            color: #172033;
+        }
+
+        .wrap {
+            max-width: 1040px;
+            margin: auto;
+            padding: 14px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        h2 {
+            margin: 0 0 10px;
+            font-size: 17px;
+        }
+
+        .top,
+        .card {
+            background: #fff;
+            border: 1px solid #d9e1ec;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px #17203314;
+        }
+
+        .top {
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+
+        .brand {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .time {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .pill,
+        .stat {
+            background: #f6f8fb;
+            border: 1px solid #e3e9f2;
+            border-radius: 11px;
+            padding: 9px;
+        }
+
+        .key {
+            font-size: 12px;
+            color: #667085;
+        }
+
+        .value {
+            margin-top: 2px;
+            font-size: 16px;
+            font-weight: 650;
+        }
+
+        #time_meta {
+            white-space: pre-line;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0;
+            overflow: auto;
+        }
+
+        .tab {
+            border: 1px solid #ccd7e6;
+            background: #fff;
+            color: #344054;
+            border-radius: 999px;
+            padding: 9px 15px;
+            font-weight: 650;
+            cursor: pointer;
+        }
+
+        .tab.on {
+            background: #1f6feb;
+            color: #fff;
+            border-color: #1f6feb;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.on {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
+        }
+
+        .card {
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+
+        fieldset {
+            border: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        label {
+            display: block;
+            margin: 0 0 10px;
+            color: #344054;
+        }
+
+        input {
+            width: 100%;
+            margin-top: 4px;
+            padding: 9px;
+            border: 1px solid #cbd5e1;
+            border-radius: 9px;
+            background: #fff;
+        }
+
+        input:focus {
+            outline: 2px solid #8bb8ff;
+            border-color: #1f6feb;
+        }
+
+        .checks {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+            gap: 7px;
+        }
+
+        .checks label,
+        .inline {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin: 0;
+            padding: 8px;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+        }
+
+        .checks input {
+            width: auto;
+            margin: 0;
+        }
+
+        button {
+            border: 0;
+            border-radius: 10px;
+            background: #1f6feb;
+            color: #fff;
+            padding: 9px 14px;
+            font-weight: 650;
+            cursor: pointer;
+        }
+
+        button.ghost {
+            background: #eef4ff;
+            color: #1f4fbf;
+        }
+
+        button:hover {
+            filter: brightness(.96);
+        }
+
+        .muted {
+            color: #667085;
+        }
+
+        .ok {
+            color: #067647;
+        }
+
+        .bad {
+            color: #b42318;
+        }
+
+        .scroll {
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            min-width: 640px;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        th {
+            background: #f8fafc;
+            color: #475467;
+            font-weight: 650;
+        }
+
+        tr:hover td {
+            background: #fbfdff;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            max-height: 220px;
+            overflow: auto;
+            padding: 10px;
+            background: #111827;
+            color: #d1fae5;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .tag {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 2px 8px;
+            background: #ecfdf3;
+            color: #067647;
+            font-size: 12px;
+        }
+
+        @media (max-width: 560px) {
+            .wrap {
+                padding: 10px;
+            }
+
+            .brand {
+                display: block;
+            }
+
+            .tab {
+                padding: 8px 12px;
+            }
+
+            h1 {
+                margin-bottom: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <!-- 公共顶部时间栏：所有 Tab 都显示 -->
+        <div class="top">
+            <div class="brand">
+                <div>
+                    <h1>Desk Monitor</h1>
+                    <div class="muted">ESP-32 Web Control</div>
+                </div>
+
+                <button id="time_set" class="ghost" type="button">同步浏览器时间</button>
+            </div>
+
+            <div class="time">
+                <div class="pill">
+                    <div class="key">设备时间</div>
+                    <div class="value" id="time_local">-</div>
+                </div>
+
+                <div class="pill">
+                    <div class="key">UTC</div>
+                    <div class="value" id="time_utc">-</div>
+                </div>
+
+                <div class="pill">
+                    <div class="key">时间状态</div>
+                    <div id="time_meta">-</div>
+                </div>
+
+                <div class="pill">
+                    <div class="key">操作结果</div>
+                    <div id="time_result">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 切换 -->
+        <div class="tabs">
+            <button class="tab on" data-p="info">设备信息</button>
+            <button class="tab" data-p="set">设置</button>
+            <button class="tab" data-p="otaPage">OTA</button>
+        </div>
+
+        <!-- Tab 1：设备信息 -->
+        <section id="info" class="page on">
+            <div class="stats">
+                <div class="stat">
+                    <div class="key">运行时间</div>
+                    <div class="value" id="update_time">-</div>
+                </div>
+
+                <div class="stat">
+                    <div class="key">传感器数量</div>
+                    <div class="value" id="sensor_count">-</div>
+                </div>
+
+                <div class="stat">
+                    <div class="key">存储状态</div>
+                    <div class="value" id="storage_state">-</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>传感器</h2>
+                <div class="scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>传感器</th>
+                                <th>地址</th>
+                                <th>状态</th>
+                                <th>读数</th>
+                                <th>单位</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sensor_status">
+                            <tr>
+                                <td colspan="6">加载中</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>内存 / 存储</h2>
+                <div class="scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>标签</th>
+                                <th>类型</th>
+                                <th>子类型</th>
+                                <th>地址</th>
+                                <th>大小</th>
+                                <th>已用</th>
+                                <th>可用</th>
+                                <th>其他</th>
+                            </tr>
+                        </thead>
+                        <tbody id="memory_status">
+                            <tr>
+                                <td colspan="8">加载中</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 2：设置 -->
+        <section id="set" class="page">
+            <form id="cfg">
+                <div class="grid">
+                    <div class="card">
+                        <h2>WiFi & 天气</h2>
+
+                        <label>
+                            SSID
+                            <input name="wifi_ssid">
+                        </label>
+
+                        <label>
+                            Password
+                            <input name="wifi_password" type="password">
+                        </label>
+
+                        <label>
+                            API Key
+                            <input name="qweather_api_key">
+                        </label>
+
+                        <label>
+                            Location
+                            <input name="qweather_location">
+                        </label>
+
+                        <div class="actions">
+                            <button id="qweather_test" type="button" class="ghost">测试天气</button>
+                        </div>
+
+                        <pre id="qweather_result">-</pre>
+                    </div>
+
+                    <div class="card">
+                        <h2>显示设置</h2>
+
+                        <label>
+                            首页标题
+                            <input name="page_summary_title">
+                        </label>
+
+                        <label>
+                            轮播间隔 [s]
+                            <input name="carousel_interval_sec" type="number">
+                        </label>
+
+                        <label>
+                            读取间隔 [s]
+                            <input name="sensor_read_interval_sec" type="number" min="1" max="3600">
+                        </label>
+
+                        <label>
+                            历史时长 [h]
+                            <input name="sensor_history_retention_hours" type="number" min="1" max="720">
+                        </label>
+
+                        <div class="checks">
+                            <label><input name="summary" type="checkbox">汇总</label>
+                            <label><input name="weather" type="checkbox">天气</label>
+                            <label><input name="sensor" type="checkbox">传感器</label>
+                            <label><input name="memo" type="checkbox">备忘录</label>
+                            <label><input name="album" type="checkbox">相册</label>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>时间 / NTP</h2>
+
+                        <label>
+                            NTP 服务器
+                            <input name="ntp_server">
+                        </label>
+
+                        <label>
+                            时区
+                            <input name="timezone" placeholder="CST-8">
+                        </label>
+
+                        <div class="actions">
+                            <button type="submit">保存设置</button>
+                            <span id="result" class="muted"></span>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <!-- Tab 3：OTA -->
+        <section id="otaPage" class="page">
+            <form id="ota" class="card">
+                <h2>OTA 更新</h2>
+
+                <label>
+                    固件链接
+                    <input name="url" placeholder="http://...">
+                </label>
+
+                <div class="actions">
+                    <button type="submit">开始更新</button>
+                    <span class="muted">提交后请等待设备完成更新并重启。</span>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <script>
+        const $ = name => document.querySelector('[name=' + name + ']');
+        const id = name => document.getElementById(name);
+
+        const B = n => {
+            // if (n >= 1048576) return (n / 1048576).toFixed(2) + ' MiB';
+            if (n >= 1024) return (n / 1024).toFixed(1) + ' KiB';
+            return (n || 0) + ' B';
+        };
+
+        let diagnosticsInterval;
+
+        // Tab 切换
+        document.querySelectorAll('.tab').forEach(button => {
+            button.onclick = () => {
+                document.querySelectorAll('.tab, .page').forEach(element => {
+                    element.classList.remove('on');
+                });
+
+                button.classList.add('on');
+                id(button.dataset.p).classList.add('on');
+            };
+        });
+
+        // 读取诊断信息：传感器、运行时间、内存、分区、存储
+        async function loadDiagnostics() {
+            try {
+                const response = await fetch('/api/diagnostics');
+                const data = await response.json();
+
+                const quantities = data.quantities || [];
+                const memory = data.system.memory || {};
+                const storage = data.system.storage || {};
+                const partitions = data.system.partitions || [];
+                const runningPartition = data.system.running_partition || {};
+
+                id('update_time').textContent = ((data.uptime_ms || 0) / 1000).toFixed(0) + ' s';
+                id('sensor_count').textContent = quantities.length;
+                id('storage_state').innerHTML = '<span class="tag">' + (storage.status || '-') + '</span>';
+
+                id('sensor_status').innerHTML = quantities.map(item => {
+                    return '<tr>' +
+                        '<td>' + item.name + '</td>' +
+                        '<td>' + item.sensor + '</td>' +
+                        '<td>' + item.address + '</td>' +
+                        '<td>' + item.status + '</td>' +
+                        '<td>' + Number(item.reading || 0).toFixed(2) + '</td>' +
+                        '<td>' + item.unit + '</td>' +
+                        '</tr>';
+                }).join('') || '<tr><td colspan="6">无传感器</td></tr>';
+
+                const appPartitions = partitions.filter(partition => partition.label !== 'littlefs');
+                const fsPartition = partitions.find(partition => partition.label === 'littlefs') || {};
+
+                id('memory_status').innerHTML =
+                    '<tr>' +
+                    '<td>Heap</td>' +
+                    '<td>内存</td>' +
+                    '<td>-</td>' +
+                    '<td>-</td>' +
+                    '<td>' + B(memory.total_heap_bytes) + '</td>' +
+                    '<td>' + B(memory.used_heap_bytes) + '</td>' +
+                    '<td>' + B(memory.free_heap_bytes) + '</td>' +
+                    '<td>最小可用 ' + B(memory.minimum_free_heap_bytes) +
+                    '，最大块 ' + B(memory.largest_free_block_bytes) + '</td>' +
+                    '</tr>' +
+                    appPartitions.map(partition => {
+                        const isRunning = partition.label === runningPartition.label;
+
+                        return '<tr>' +
+                            '<td>' + partition.label + '</td>' +
+                            '<td>' + partition.type + '</td>' +
+                            '<td>' + partition.subtype + '</td>' +
+                            '<td>0x' + partition.address.toString(16) + '</td>' +
+                            '<td>' + B(partition.size_bytes) + '</td>' +
+                            '<td>' + (isRunning ? B(runningPartition.size) : '-') + '</td>' +
+                            '<td>-</td>' +
+                            '<td>' + (isRunning ? '运行分区' : '-') + '</td>' +
+                            '</tr>';
+                    }).join('') +
+                    '<tr>' +
+                    '<td>' + storage.label + '</td>' +
+                    '<td>存储 ' + (fsPartition.type || '-') + '</td>' +
+                    '<td>' + (fsPartition.subtype || '-') + '</td>' +
+                    '<td>0x' + ((fsPartition.address || 0).toString(16)) + '</td>' +
+                    '<td>' + B(storage.total_bytes) + '</td>' +
+                    '<td>' + B(storage.used_bytes) + '</td>' +
+                    '<td>' + B(storage.free_bytes) + '</td>' +
+                    '<td>状态 ' + (storage.status || '-') + '</td>' +
+                    '</tr>';
+            } catch (error) {
+                id('sensor_status').innerHTML = '<tr><td colspan="6">读取失败</td></tr>';
+            }
+        }
+
+        // 读取设备时间
+        async function loadTime() {
+            try {
+                const response = await fetch('/api/time');
+                if (!response.ok) throw 0;
+
+                const time = await response.json();
+                const timeValid = time.time_valid !== false;
+                const meta = [];
+
+                id('time_local').textContent = timeValid ? (time.local_time || '-') : '未设置';
+                id('time_utc').textContent = timeValid ? (time.utc_time || '-') : '-';
+
+                if (time.sntp_status) meta.push('SNTP:' + time.sntp_status);
+                if (time.ntp_server) meta.push('NTP:' + time.ntp_server);
+                if (time.timezone) meta.push('TZ:' + time.timezone);
+
+                id('time_meta').textContent = meta.join('\n') || '-';
+            } catch (error) {
+                id('time_meta').textContent = '读取失败';
+            }
+        }
+
+        // 同步浏览器时间到设备
+        id('time_set').onclick = async () => {
+            const output = id('time_result');
+            output.textContent = '设置中...';
+
+            try {
+                const response = await fetch('/api/time', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        epoch_sec: Math.floor(Date.now() / 1000)
+                    })
+                });
+
+                output.textContent = response.ok ? '已同步' : '失败';
+                if (response.ok) loadTime();
+            } catch (error) {
+                output.textContent = '失败';
+            }
+        };
+
+        // 读取配置并填入表单
+        fetch('/api/config')
+            .then(response => response.json())
+            .then(config => {
+                [
+                    'wifi_ssid',
+                    'wifi_password',
+                    'qweather_api_key',
+                    'qweather_location',
+                    'page_summary_title',
+                    'carousel_interval_sec',
+                    'sensor_read_interval_sec',
+                    'sensor_history_retention_hours',
+                    'ntp_server',
+                    'timezone'
+                ].forEach(key => {
+                    $(key).value = config[key] || '';
+                });
+
+                for (const key in config.pages) {
+                    $(key).checked = config.pages[key];
+                }
+
+                clearInterval(diagnosticsInterval);
+                diagnosticsInterval = setInterval(
+                    loadDiagnostics,
+                    Number($('sensor_read_interval_sec').value || 10) * 1000
+                );
+            });
+
+        // 保存配置
+        id('cfg').onsubmit = async event => {
+            event.preventDefault();
+
+            const body = {
+                wifi_ssid: $('wifi_ssid').value,
+                wifi_password: $('wifi_password').value,
+                qweather_api_key: $('qweather_api_key').value,
+                qweather_location: $('qweather_location').value,
+                page_summary_title: $('page_summary_title').value,
+                carousel_interval_sec: Number($('carousel_interval_sec').value),
+                sensor_read_interval_sec: Number($('sensor_read_interval_sec').value),
+                sensor_history_retention_hours: Number($('sensor_history_retention_hours').value),
+                ntp_server: $('ntp_server').value,
+                timezone: $('timezone').value,
+                pages: {
+                    summary: $('summary').checked,
+                    weather: $('weather').checked,
+                    sensor: $('sensor').checked,
+                    memo: $('memo').checked,
+                    album: $('album').checked
+                }
+            };
+
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+
+            id('result').textContent = response.ok ? '已保存' : '保存失败';
+
+            clearInterval(diagnosticsInterval);
+            diagnosticsInterval = setInterval(
+                loadDiagnostics,
+                Number($('sensor_read_interval_sec').value || 10) * 1000
+            );
+        };
+
+        // 测试和风天气配置
+        id('qweather_test').onclick = async () => {
+            const output = id('qweather_result');
+            output.textContent = '测试中...';
+
+            const response = await fetch('/api/qweather/test', {
+                method: 'POST',
+                body: JSON.stringify({
+                    qweather_api_key: $('qweather_api_key').value,
+                    qweather_location: $('qweather_location').value
+                })
+            });
+
+            output.textContent = JSON.stringify(await response.json(), null, 2);
+        };
+
+        // OTA 更新
+        id('ota').onsubmit = async event => {
+            event.preventDefault();
+
+            await fetch('/api/ota', {
+                method: 'POST',
+                body: JSON.stringify({
+                    url: $('url').value
+                })
+            });
+        };
+
+        loadDiagnostics();
+        diagnosticsInterval = setInterval(loadDiagnostics, 10000);
+
+        loadTime();
+        setInterval(loadTime, 30000);
+    </script>
+</body>
+
+</html>

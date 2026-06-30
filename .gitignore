@@ -12,3 +12,4 @@ managed_components/
 # Compile Output
 sdkconfig.esp32dev
 dependencies.lock
+data/
