@@ -2,8 +2,8 @@
 
 #include <stdbool.h>
 
-#include "esp_err.h"
-#include "esp_log.h"
+#include <esp_err.h>
+#include <esp_log.h>
 
 static const char *TAG = "deskmon_button";
 
