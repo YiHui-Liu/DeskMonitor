@@ -19,7 +19,6 @@
 
 static const char *TAG = "deskmon_display_data";
 static const size_t QWEATHER_RESPONSE_MAX = 8192;
-static const uint32_t HISTORY_SIZE = 8;
 static const TickType_t FIRST_UPDATE_DELAY = pdMS_TO_TICKS(1500);
 
 typedef struct {
@@ -29,7 +28,7 @@ typedef struct {
 } http_response_t;
 
 typedef struct {
-  float values[8];
+  float values[DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT];
   uint32_t count;
   uint32_t next;
 } value_history_t;
@@ -88,7 +87,8 @@ static esp_err_t fetch_qweather_path(const char *api_key, const char *location, 
 
   esp_http_client_set_header(client, "X-QW-Api-Key", api_key);
   esp_err_t err = esp_http_client_perform(client);
-  if (err == ESP_OK && esp_http_client_get_status_code(client) >= 200 && esp_http_client_get_status_code(client) < 300) {
+  if (err == ESP_OK && esp_http_client_get_status_code(client) >= 200 &&
+      esp_http_client_get_status_code(client) < 300) {
     *body = response.data;
   } else {
     free(response.data);
@@ -100,15 +100,15 @@ static esp_err_t fetch_qweather_path(const char *api_key, const char *location, 
 
 static void history_add(value_history_t *history, float value) {
   history->values[history->next] = value;
-  history->next = (history->next + 1U) % HISTORY_SIZE;
-  if (history->count < HISTORY_SIZE) {
+  history->next = (history->next + 1U) % DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT;
+  if (history->count < DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT) {
     history->count++;
   }
 }
 
 static void format_history(char *buffer, size_t size, const value_history_t *history, bool decimal) {
   if (history->count == 0) {
-    strlcpy(buffer, "最大 -- | 最小 -- | 平均 --", size);
+    strlcpy(buffer, "Max ----- | Min -----", size);
     return;
   }
   float min = history->values[0];
@@ -120,18 +120,74 @@ static void format_history(char *buffer, size_t size, const value_history_t *his
     max = value > max ? value : max;
     sum += value;
   }
-  const float avg = sum / (float)history->count;
   if (decimal) {
-    snprintf(buffer, size, "最大 %.1f | 最小 %.1f | 平均 %.1f", max, min, avg);
+    snprintf(buffer, size, "Max %5.1f | Min %5.1f", max, min);
   } else {
-    snprintf(buffer, size, "最大 %.0f | 最小 %.0f | 平均 %.0f", max, min, avg);
+    snprintf(buffer, size, "Max %5.0f | Min %5.0f", max, min);
   }
 }
 
+static void copy_history_samples(deskmon_display_sensor_t *sensor, const value_history_t *history) {
+  const uint32_t count = history->count;
+  sensor->sample_count = count;
+  const uint32_t oldest = count == DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT ? history->next : 0;
+  for (uint32_t i = 0; i < count; ++i) {
+    sensor->samples[i] = history->values[(oldest + i) % DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT];
+  }
+}
+
+static const char *status_five_level(uint32_t level) {
+  static const char *const labels[] = {"优秀", "良好", "一般", "较差", "极差"};
+  return labels[level < 5U ? level : 4U];
+}
+
+static const char *temperature_status(float value) {
+  if (value >= 20.0f && value <= 26.0f) return status_five_level(0);
+  if ((value >= 18.0f && value < 20.0f) || (value > 26.0f && value <= 28.0f)) return status_five_level(1);
+  if ((value >= 16.0f && value < 18.0f) || (value > 28.0f && value <= 30.0f)) return status_five_level(2);
+  if ((value >= 12.0f && value < 16.0f) || (value > 30.0f && value <= 35.0f)) return status_five_level(3);
+  return status_five_level(4);
+}
+
+static const char *humidity_status(float value) {
+  if (value >= 40.0f && value <= 60.0f) return status_five_level(0);
+  if ((value >= 30.0f && value < 40.0f) || (value > 60.0f && value <= 70.0f)) return status_five_level(1);
+  if ((value >= 20.0f && value < 30.0f) || (value > 70.0f && value <= 80.0f)) return status_five_level(2);
+  if ((value >= 10.0f && value < 20.0f) || (value > 80.0f && value <= 90.0f)) return status_five_level(3);
+  return status_five_level(4);
+}
+
+static const char *light_status(float value) {
+  if (value < 50.0f) return "过暗";
+  if (value < 150.0f) return "偏暗";
+  if (value <= 1000.0f) return "适宜";
+  if (value <= 2000.0f) return "偏亮";
+  return "过亮";
+}
+
+static const char *co2_status(uint16_t ppm) {
+  if (ppm <= 600U) return status_five_level(0);
+  if (ppm <= 800U) return status_five_level(1);
+  if (ppm <= 1000U) return status_five_level(2);
+  if (ppm <= 1500U) return status_five_level(3);
+  return status_five_level(4);
+}
+
+static const char *tvoc_status(uint16_t ppb) {
+  if (ppb < 65U) return status_five_level(0);
+  if (ppb < 220U) return status_five_level(1);
+  if (ppb < 650U) return status_five_level(2);
+  if (ppb < 2200U) return status_five_level(3);
+  return status_five_level(4);
+}
+
+static const char *aqi_status(uint8_t aqi) { return status_five_level(aqi > 0U ? (uint32_t)aqi - 1U : 4U); }
+
 static void set_sensor_missing(deskmon_display_sensor_t *sensor) {
   strlcpy(sensor->reading, "n/a", sizeof(sensor->reading));
-  strlcpy(sensor->status, "缺失", sizeof(sensor->status));
-  strlcpy(sensor->stats, "最大 -- | 最小 -- | 平均 --", sizeof(sensor->stats));
+  strlcpy(sensor->status, "", sizeof(sensor->status));
+  strlcpy(sensor->stats, "Max ----- | Min -----", sizeof(sensor->stats));
+  sensor->sample_count = 0;
   sensor->valid = false;
 }
 
@@ -143,10 +199,12 @@ static void update_sensor_snapshot(deskmon_display_snapshot_t *snapshot) {
     history_add(&s_history[1], humidity);
     snprintf(snapshot->sensors[0].reading, sizeof(snapshot->sensors[0].reading), "%.1f°C", temperature);
     snprintf(snapshot->sensors[1].reading, sizeof(snapshot->sensors[1].reading), "%.0f%%", humidity);
-    strlcpy(snapshot->sensors[0].status, temperature >= 18.0f && temperature <= 30.0f ? "舒适" : "关注", sizeof(snapshot->sensors[0].status));
-    strlcpy(snapshot->sensors[1].status, humidity >= 40.0f && humidity <= 70.0f ? "舒适" : "关注", sizeof(snapshot->sensors[1].status));
-    format_history(snapshot->sensors[0].stats, sizeof(snapshot->sensors[0].stats), &s_history[0], false);
-    format_history(snapshot->sensors[1].stats, sizeof(snapshot->sensors[1].stats), &s_history[1], false);
+    strlcpy(snapshot->sensors[0].status, temperature_status(temperature), sizeof(snapshot->sensors[0].status));
+    strlcpy(snapshot->sensors[1].status, humidity_status(humidity), sizeof(snapshot->sensors[1].status));
+    format_history(snapshot->sensors[0].stats, sizeof(snapshot->sensors[0].stats), &s_history[0], true);
+    format_history(snapshot->sensors[1].stats, sizeof(snapshot->sensors[1].stats), &s_history[1], true);
+    copy_history_samples(&snapshot->sensors[0], &s_history[0]);
+    copy_history_samples(&snapshot->sensors[1], &s_history[1]);
     snapshot->sensors[0].valid = true;
     snapshot->sensors[1].valid = true;
     snprintf(snapshot->temperature, sizeof(snapshot->temperature), "%.1f°C", temperature);
@@ -160,8 +218,9 @@ static void update_sensor_snapshot(deskmon_display_snapshot_t *snapshot) {
   if (deskmon_tsl2591_read_lux(&lux) == ESP_OK) {
     history_add(&s_history[2], lux);
     snprintf(snapshot->sensors[2].reading, sizeof(snapshot->sensors[2].reading), "%.0flx", lux);
-    strlcpy(snapshot->sensors[2].status, lux >= 100.0f && lux <= 1500.0f ? "适中" : "关注", sizeof(snapshot->sensors[2].status));
+    strlcpy(snapshot->sensors[2].status, light_status(lux), sizeof(snapshot->sensors[2].status));
     format_history(snapshot->sensors[2].stats, sizeof(snapshot->sensors[2].stats), &s_history[2], false);
+    copy_history_samples(&snapshot->sensors[2], &s_history[2]);
     snapshot->sensors[2].valid = true;
   } else {
     set_sensor_missing(&snapshot->sensors[2]);
@@ -175,12 +234,15 @@ static void update_sensor_snapshot(deskmon_display_snapshot_t *snapshot) {
     snprintf(snapshot->sensors[3].reading, sizeof(snapshot->sensors[3].reading), "%uppm", ens.eco2_ppm);
     snprintf(snapshot->sensors[4].reading, sizeof(snapshot->sensors[4].reading), "%uppb", ens.tvoc_ppb);
     snprintf(snapshot->sensors[5].reading, sizeof(snapshot->sensors[5].reading), "%u", ens.aqi);
-    strlcpy(snapshot->sensors[3].status, ens.eco2_ppm <= 1000 ? "良好" : "关注", sizeof(snapshot->sensors[3].status));
-    strlcpy(snapshot->sensors[4].status, ens.tvoc_ppb <= 500 ? "优" : "关注", sizeof(snapshot->sensors[4].status));
-    strlcpy(snapshot->sensors[5].status, ens.aqi <= 2 ? "优" : "关注", sizeof(snapshot->sensors[5].status));
+    strlcpy(snapshot->sensors[3].status, co2_status(ens.eco2_ppm), sizeof(snapshot->sensors[3].status));
+    strlcpy(snapshot->sensors[4].status, tvoc_status(ens.tvoc_ppb), sizeof(snapshot->sensors[4].status));
+    strlcpy(snapshot->sensors[5].status, aqi_status(ens.aqi), sizeof(snapshot->sensors[5].status));
     format_history(snapshot->sensors[3].stats, sizeof(snapshot->sensors[3].stats), &s_history[3], false);
     format_history(snapshot->sensors[4].stats, sizeof(snapshot->sensors[4].stats), &s_history[4], false);
     format_history(snapshot->sensors[5].stats, sizeof(snapshot->sensors[5].stats), &s_history[5], false);
+    copy_history_samples(&snapshot->sensors[3], &s_history[3]);
+    copy_history_samples(&snapshot->sensors[4], &s_history[4]);
+    copy_history_samples(&snapshot->sensors[5], &s_history[5]);
     snapshot->sensors[3].valid = true;
     snapshot->sensors[4].valid = true;
     snapshot->sensors[5].valid = true;
@@ -265,7 +327,8 @@ static bool parse_hourly(deskmon_display_snapshot_t *snapshot, const char *body)
       time_to_hour_min(fx_time->valuestring, snapshot->hourly[i].time, sizeof(snapshot->hourly[i].time));
     }
     if (cJSON_IsString(text) && cJSON_IsString(temp)) {
-      snprintf(snapshot->hourly[i].weather, sizeof(snapshot->hourly[i].weather), "%s %s°", text->valuestring, temp->valuestring);
+      snprintf(snapshot->hourly[i].weather, sizeof(snapshot->hourly[i].weather), "%s %s°", text->valuestring,
+               temp->valuestring);
     }
   }
   cJSON_Delete(root);
@@ -292,7 +355,8 @@ static bool parse_daily(deskmon_display_snapshot_t *snapshot, const char *body) 
       snapshot->daily[i].icon = weather_icon_from_text(text->valuestring);
     }
     if (cJSON_IsString(temp_min) && cJSON_IsString(temp_max)) {
-      snprintf(snapshot->daily[i].temp, sizeof(snapshot->daily[i].temp), "%s~%s°", temp_min->valuestring, temp_max->valuestring);
+      snprintf(snapshot->daily[i].temp, sizeof(snapshot->daily[i].temp), "%s~%s°", temp_min->valuestring,
+               temp_max->valuestring);
       if (i == 0) {
         snprintf(snapshot->low, sizeof(snapshot->low), "%s°C", temp_min->valuestring);
         snprintf(snapshot->high, sizeof(snapshot->high), "%s°C", temp_max->valuestring);
@@ -352,8 +416,6 @@ static void display_data_task(void *arg) {
     if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
       next = s_snapshot;
       xSemaphoreGive(s_lock);
-    } else {
-      deskmon_display_snapshot_defaults(&next);
     }
     update_sensor_snapshot(&next);
     const TickType_t now = xTaskGetTickCount();
@@ -369,7 +431,8 @@ static void display_data_task(void *arg) {
       s_snapshot = next;
       xSemaphoreGive(s_lock);
     }
-    const uint32_t interval_sec = s_config != NULL ? s_config->sensor_read_interval_sec : DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC;
+    const uint32_t interval_sec =
+        s_config != NULL ? s_config->sensor_read_interval_sec : DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC;
     vTaskDelay(pdMS_TO_TICKS(interval_sec * 1000U));
   }
 }
@@ -386,13 +449,17 @@ esp_err_t deskmon_display_data_start(const deskmon_config_t *config) {
     }
   }
   if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
-    deskmon_display_snapshot_defaults(&s_snapshot);
+    deskmon_display_snapshot_init(&s_snapshot);
     xSemaphoreGive(s_lock);
   }
   if (s_started) {
     return ESP_OK;
   }
-  if (xTaskCreate(display_data_task, "display_data", 8192, NULL, 5, NULL) != pdPASS) {
+  /* Stack carries the TLS handshake (mbedTLS cert verify + SHA is ~8 KB by
+   * itself, same reason the httpd qweather task needs its own) plus two
+   * ~2 KB snapshot locals (next + weather rollback copy) in the loop. Keep
+   * generous headroom; shrinking this trips a runtime stack-overflow. */
+  if (xTaskCreate(display_data_task, "display_data", 16384, NULL, 5, NULL) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
   s_started = true;

@@ -1,5 +1,6 @@
 #include "ui/ui_pages.h"
 #include "ui/ui_font.h"
+#include "ui/ui_history_points.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -40,7 +41,7 @@ static void label_center(lv_obj_t *parent, const char *text, int32_t y, lv_color
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 }
 
-/* ---- Sensor page sparkline data (8 points each, x: 0-140 step 20, y: 0-40 inverted) ---- */
+/* ---- Sensor page sparkline rendering (x: 0-140, y: 0-40 inverted) ---- */
 
 /* Vector icon + tile helpers. Icons are drawn from LVGL primitives so they
  * never depend on a glyph that may be absent from the embedded font. */
@@ -216,119 +217,42 @@ static void weather_day_card(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, 
   label_center(card, temp, h - 16, lv_color_hex(0x111827));
 }
 
-void deskmon_display_snapshot_defaults(deskmon_display_snapshot_t *snapshot) {
+void deskmon_display_snapshot_init(deskmon_display_snapshot_t *snapshot) {
   if (snapshot == NULL) {
     return;
   }
-  memset(snapshot, 0, sizeof(*snapshot));
-  strlcpy(snapshot->date, "2026-06-30", sizeof(snapshot->date));
-  strlcpy(snapshot->weekday, "星期二", sizeof(snapshot->weekday));
-  strlcpy(snapshot->time, "10:30", sizeof(snapshot->time));
-  strlcpy(snapshot->location, "深圳市 南山区", sizeof(snapshot->location));
-  strlcpy(snapshot->weather_text, "多云", sizeof(snapshot->weather_text));
-  strlcpy(snapshot->temperature, "28°C", sizeof(snapshot->temperature));
-  strlcpy(snapshot->humidity, "62%", sizeof(snapshot->humidity));
-  strlcpy(snapshot->wind, "东南风 2.6m/s", sizeof(snapshot->wind));
-  strlcpy(snapshot->high, "32°C", sizeof(snapshot->high));
-  strlcpy(snapshot->low, "24°C", sizeof(snapshot->low));
-  strlcpy(snapshot->pressure, "1008 hPa", sizeof(snapshot->pressure));
-  strlcpy(snapshot->feels_like, "31°C", sizeof(snapshot->feels_like));
-  strlcpy(snapshot->precip, "20%", sizeof(snapshot->precip));
-
-  const char *times[DESKMON_DISPLAY_HOURLY_COUNT] = {"10:00", "11:00", "12:00", "13:00", "14:00", "15:00"};
-  const char *hourly[DESKMON_DISPLAY_HOURLY_COUNT] = {"晴 30°",   "晴 31°",   "多云 31°",
-                                                      "多云 32°", "小雨 30°", "多云 29°"};
-  for (int i = 0; i < DESKMON_DISPLAY_HOURLY_COUNT; ++i) {
-    strlcpy(snapshot->hourly[i].time, times[i], sizeof(snapshot->hourly[i].time));
-    strlcpy(snapshot->hourly[i].weather, hourly[i], sizeof(snapshot->hourly[i].weather));
-  }
-
-  const deskmon_display_daily_t daily[DESKMON_DISPLAY_DAILY_COUNT] = {
-      {.date = "6月30", .temp = "24~33°", .icon = DESKMON_WEATHER_ICON_SUN},
-      {.date = "7月1", .temp = "25~34°", .icon = DESKMON_WEATHER_ICON_CLOUD},
-      {.date = "7月2", .temp = "24~30°", .icon = DESKMON_WEATHER_ICON_RAIN},
-      {.date = "7月3", .temp = "25~32°", .icon = DESKMON_WEATHER_ICON_CLOUD},
-      {.date = "7月4", .temp = "25~33°", .icon = DESKMON_WEATHER_ICON_SUN},
-  };
-  memcpy(snapshot->daily, daily, sizeof(daily));
 
   const deskmon_display_sensor_t sensors[DESKMON_DISPLAY_SENSOR_COUNT] = {
-      {.name = "温度",
-       .icon = DESKMON_SENSOR_ICON_TEMPERATURE,
-       .reading = "27.4°C",
-       .status = "舒适",
-       .stats = "最大 29 | 最小 24 | 平均 27",
-       .valid = true},
-      {.name = "湿度",
-       .icon = DESKMON_SENSOR_ICON_HUMIDITY,
-       .reading = "62%",
-       .status = "舒适",
-       .stats = "最大 70 | 最小 50 | 平均 60",
-       .valid = true},
-      {.name = "光照",
-       .icon = DESKMON_SENSOR_ICON_LIGHT,
-       .reading = "512lx",
-       .status = "适中",
-       .stats = "最大 1800 | 最小 0 | 平均 760",
-       .valid = true},
-      {.name = "CO2",
-       .icon = DESKMON_SENSOR_ICON_CO2,
-       .reading = "724ppm",
-       .status = "良好",
-       .stats = "最大 900 | 最小 520 | 平均 680",
-       .valid = true},
-      {.name = "TVOC",
-       .icon = DESKMON_SENSOR_ICON_TVOC,
-       .reading = "0.38",
-       .status = "优",
-       .stats = "最大 0.50 | 最小 0.15 | 平均 0.33",
-       .valid = true},
-      {.name = "AQI",
-       .icon = DESKMON_SENSOR_ICON_AQI,
-       .reading = "32",
-       .status = "优",
-       .stats = "最大 42 | 最小 21 | 平均 31",
-       .valid = true},
+      {.name = "温度", .icon = DESKMON_SENSOR_ICON_TEMPERATURE}, {.name = "湿度", .icon = DESKMON_SENSOR_ICON_HUMIDITY},
+      {.name = "光照", .icon = DESKMON_SENSOR_ICON_LIGHT},       {.name = "CO2", .icon = DESKMON_SENSOR_ICON_CO2},
+      {.name = "TVOC", .icon = DESKMON_SENSOR_ICON_TVOC},        {.name = "AQI", .icon = DESKMON_SENSOR_ICON_AQI},
   };
   memcpy(snapshot->sensors, sensors, sizeof(sensors));
-  snapshot->weather_valid = true;
-  snapshot->sensors_valid = true;
 }
 
-static const deskmon_display_snapshot_t *snapshot_or_default(const deskmon_display_snapshot_t *snapshot,
-                                                             deskmon_display_snapshot_t *fallback) {
-  if (snapshot != NULL) {
-    return snapshot;
-  }
-  deskmon_display_snapshot_defaults(fallback);
-  return fallback;
-}
-
-static const lv_point_precise_t spark_temp[] = {{0, 30}, {20, 25},  {40, 18},  {60, 8},
-                                                {80, 5}, {100, 12}, {120, 22}, {140, 28}};
-static const lv_point_precise_t spark_humid[] = {{0, 10},  {20, 15},  {40, 22},  {60, 30},
-                                                 {80, 35}, {100, 28}, {120, 18}, {140, 12}};
-static const lv_point_precise_t spark_light[] = {{0, 38}, {20, 35},  {40, 25},  {60, 12},
-                                                 {80, 5}, {100, 15}, {120, 30}, {140, 38}};
-static const lv_point_precise_t spark_co2[] = {{0, 25}, {20, 20},  {40, 15},  {60, 8},
-                                               {80, 5}, {100, 10}, {120, 18}, {140, 22}};
-static const lv_point_precise_t spark_tvoc[] = {{0, 30},  {20, 28},  {40, 20},  {60, 5},
-                                                {80, 15}, {100, 25}, {120, 22}, {140, 28}};
-static const lv_point_precise_t spark_aqi[] = {{0, 20},  {20, 18},  {40, 22},  {60, 15},
-                                               {80, 25}, {100, 20}, {120, 18}, {140, 22}};
+static lv_point_precise_t s_sensor_points[DESKMON_DISPLAY_SENSOR_COUNT][DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT];
 
 static void sensor_pad(lv_obj_t *parent, int32_t x, int32_t y, const deskmon_display_sensor_t *sensor,
-                       lv_color_t accent, const lv_point_precise_t *pts, uint16_t cnt) {
+                       lv_color_t accent, lv_point_precise_t *pts) {
   lv_obj_t *card = card_create(parent, x, y, 153, 113);
   sensor_icon_drawer(sensor->icon)(card, 0, 0, accent);
   label_create(card, sensor->name, 22, 1, lv_color_hex(0x1F2937));
-  label_create(card, sensor->reading, 78, 1, lv_color_hex(0x111827));
-  label_create(card, sensor->status, 124, 1, sensor->valid ? accent : lv_color_hex(0x9CA3AF));
+  label_create(card, sensor->reading, 60, 1, lv_color_hex(0x111827));
+  label_create(card, sensor->status, 110, 1, sensor->valid ? accent : lv_color_hex(0x9CA3AF));
   label_create(card, sensor->stats, 0, 28, lv_color_hex(0x4B5563));
 
   draw_chart_axes(card, 0, 62, lv_color_hex(0xC4D2E3));
+  deskmon_history_point_t history_points[DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT];
+  const uint32_t point_count = deskmon_history_points(sensor->samples, sensor->sample_count, 140, 40, history_points);
+  if (point_count < 2) {
+    return;
+  }
+  for (uint32_t i = 0; i < point_count; ++i) {
+    pts[i].x = history_points[i].x;
+    pts[i].y = history_points[i].y;
+  }
   lv_obj_t *line = lv_line_create(card);
-  lv_line_set_points(line, pts, cnt);
+  lv_line_set_points(line, pts, point_count);
   lv_obj_set_pos(line, 0, 62);
   lv_obj_set_style_line_color(line, accent, 0);
   lv_obj_set_style_line_width(line, 2, 0);
@@ -355,8 +279,6 @@ static void render_summary(lv_obj_t *parent, const deskmon_display_snapshot_t *s
   label_create(weather, snapshot->wind, 170, 42, lv_color_hex(0x1F2937));
 
   lv_obj_t *memo = card_create(parent, 8, 86, 464, 46);
-  label_create(memo, "备忘录摘要", 16, 10, lv_color_hex(0x155CC9));
-  label_create(memo, "· 15:00 设备巡检    · 17:30 更换滤网    · 20:00 关闭新风", 112, 12, lv_color_hex(0x111827));
 
   sensor_summary_card(parent, 8, 142, 110, 88, &snapshot->sensors[0], lv_color_hex(0xEF4444));
   sensor_summary_card(parent, 126, 142, 110, 88, &snapshot->sensors[1], lv_color_hex(0x228BE6));
@@ -397,12 +319,12 @@ static void render_weather(lv_obj_t *parent, const deskmon_display_snapshot_t *s
 }
 
 static void render_sensor(lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot) {
-  sensor_pad(parent, 4, 4, &snapshot->sensors[0], lv_color_hex(0xEF4444), spark_temp, 8);
-  sensor_pad(parent, 163, 4, &snapshot->sensors[1], lv_color_hex(0x228BE6), spark_humid, 8);
-  sensor_pad(parent, 322, 4, &snapshot->sensors[2], lv_color_hex(0xF59E0B), spark_light, 8);
-  sensor_pad(parent, 4, 123, &snapshot->sensors[3], lv_color_hex(0x22A652), spark_co2, 8);
-  sensor_pad(parent, 163, 123, &snapshot->sensors[4], lv_color_hex(0x7C5CC4), spark_tvoc, 8);
-  sensor_pad(parent, 322, 123, &snapshot->sensors[5], lv_color_hex(0x2D9CA3), spark_aqi, 8);
+  sensor_pad(parent, 4, 4, &snapshot->sensors[0], lv_color_hex(0xEF4444), s_sensor_points[0]);
+  sensor_pad(parent, 163, 4, &snapshot->sensors[1], lv_color_hex(0x228BE6), s_sensor_points[1]);
+  sensor_pad(parent, 322, 4, &snapshot->sensors[2], lv_color_hex(0xF59E0B), s_sensor_points[2]);
+  sensor_pad(parent, 4, 123, &snapshot->sensors[3], lv_color_hex(0x22A652), s_sensor_points[3]);
+  sensor_pad(parent, 163, 123, &snapshot->sensors[4], lv_color_hex(0x7C5CC4), s_sensor_points[4]);
+  sensor_pad(parent, 322, 123, &snapshot->sensors[5], lv_color_hex(0x2D9CA3), s_sensor_points[5]);
 }
 
 static void render_memo(lv_obj_t *parent) {
@@ -436,18 +358,16 @@ static void render_album(lv_obj_t *parent) {
 
 lv_obj_t *deskmon_page_create(deskmon_page_id_t page, lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot) {
   deskmon_page_id_t safe_page = (page >= 0 && page < DESKMON_PAGE_COUNT) ? page : DESKMON_PAGE_SUMMARY;
-  deskmon_display_snapshot_t fallback;
-  const deskmon_display_snapshot_t *data = snapshot_or_default(snapshot, &fallback);
   lv_obj_t *container = lv_obj_create(parent);
   style_plain(container);
   lv_obj_set_size(container, LV_PCT(100), LV_PCT(100));
 
   switch (safe_page) {
   case DESKMON_PAGE_WEATHER:
-    render_weather(container, data);
+    render_weather(container, snapshot);
     break;
   case DESKMON_PAGE_SENSOR:
-    render_sensor(container, data);
+    render_sensor(container, snapshot);
     break;
   case DESKMON_PAGE_MEMO:
     render_memo(container);
@@ -457,7 +377,7 @@ lv_obj_t *deskmon_page_create(deskmon_page_id_t page, lv_obj_t *parent, const de
     break;
   case DESKMON_PAGE_SUMMARY:
   default:
-    render_summary(container, data);
+    render_summary(container, snapshot);
     break;
   }
 

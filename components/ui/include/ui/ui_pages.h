@@ -3,10 +3,12 @@
 #include "ui/ui_carousel.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
-#include "lvgl.h"
+#include <lvgl.h>
 
 #define DESKMON_DISPLAY_SENSOR_COUNT 6
+#define DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT 50
 #define DESKMON_DISPLAY_HOURLY_COUNT 6
 #define DESKMON_DISPLAY_DAILY_COUNT 5
 
@@ -31,6 +33,8 @@ typedef struct {
   char reading[16];
   char status[8];
   char stats[40];
+  float samples[DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT];
+  uint32_t sample_count;
   bool valid;
 } deskmon_display_sensor_t;
 
@@ -66,5 +70,5 @@ typedef struct {
   bool sensors_valid;
 } deskmon_display_snapshot_t;
 
-void deskmon_display_snapshot_defaults(deskmon_display_snapshot_t *snapshot);
+void deskmon_display_snapshot_init(deskmon_display_snapshot_t *snapshot);
 lv_obj_t *deskmon_page_create(deskmon_page_id_t page, lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot);
