@@ -79,6 +79,7 @@ CONFIG_LV_MEM_SIZE_KILOBYTES=64      # LVGL 内部堆（widgets 分配用）
 CONFIG_LV_MEM_ADR=0                  # 0 = 让 LVGL 用 malloc
 CONFIG_LV_OS_FREERTOS=y              # 告诉 LVGL 我们用 FreeRTOS（v9 用 choice 选项）
 CONFIG_LV_USE_FREERTOS_TASK_NOTIFY=y
+CONFIG_LV_FONT_SOURCE_HAN_SANS_SC_14_CJK=y # 中文补充字库，作为自定义字体 fallback
 
 # ---------- 编译优化 ----------
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y      # 体积优先（OTA slot 1.688MB 紧）
