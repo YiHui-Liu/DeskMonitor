@@ -431,6 +431,11 @@
                             <input name="qweather_location">
                         </label>
 
+                        <label>
+                            天气刷新 [min]
+                            <input name="weather_refresh_interval_min" type="number" min="5" max="360">
+                        </label>
+
                         <div class="actions">
                             <button id="qweather_test" type="button" class="ghost">测试天气</button>
                         </div>
@@ -657,6 +662,7 @@
                     'wifi_password',
                     'qweather_api_key',
                     'qweather_location',
+                    'weather_refresh_interval_min',
                     'page_summary_title',
                     'carousel_interval_sec',
                     'sensor_read_interval_sec',
@@ -687,6 +693,7 @@
                 wifi_password: $('wifi_password').value,
                 qweather_api_key: $('qweather_api_key').value,
                 qweather_location: $('qweather_location').value,
+                weather_refresh_interval_min: Number($('weather_refresh_interval_min').value),
                 page_summary_title: $('page_summary_title').value,
                 carousel_interval_sec: Number($('carousel_interval_sec').value),
                 sensor_read_interval_sec: Number($('sensor_read_interval_sec').value),

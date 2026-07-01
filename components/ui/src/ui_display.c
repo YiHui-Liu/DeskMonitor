@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "bsp/bsp_io.h"
 #include "ui/ui_carousel.h"
@@ -37,11 +38,15 @@ static esp_lcd_panel_handle_t s_panel;
 static lv_display_t *s_display;
 static SemaphoreHandle_t s_flush_done_sem;
 static lv_obj_t *s_header_title;
+static lv_obj_t *s_header_clock;
 static lv_obj_t *s_content;
 static lv_obj_t *s_footer_items[DESKMON_PAGE_COUNT];
 static deskmon_page_id_t s_active_page = DESKMON_PAGE_SUMMARY;
 static bool s_enabled_pages[DESKMON_PAGE_COUNT] = {true, true, true, true, true};
 static uint32_t s_carousel_period_ms = 15U * 1000U;
+static deskmon_display_snapshot_t s_snapshot;
+static deskmon_display_snapshot_provider_t s_snapshot_provider;
+static void *s_snapshot_ctx;
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t s_draw_buf1[DISPLAY_BUF_BYTES];
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t s_draw_buf2[DISPLAY_BUF_BYTES];
 
@@ -93,8 +98,35 @@ static lv_obj_t *label_at(lv_obj_t *parent, const char *text, int32_t x, int32_t
   return label;
 }
 
+/* Header clock shows date + time with seconds. Until the system clock is set
+ * (it boots at the epoch), keep the literal fallback so the header always
+ * reads sensibly. Only the local RTC is read here -- no SNTP/network plumbing. */
+#define HEADER_CLOCK_FALLBACK "2026-06-30 10:30:00"
+/* tm_year is years since 1900; treat anything in 2020+ as a set clock. */
+#define HEADER_CLOCK_MIN_YEAR (2020 - 1900)
+
+static void header_clock_update(void) {
+  if (s_header_clock == NULL) {
+    return;
+  }
+  time_t now = time(NULL);
+  struct tm tm_local;
+  char buf[24] = {0};
+  if (now > 0 && localtime_r(&now, &tm_local) != NULL && tm_local.tm_year >= HEADER_CLOCK_MIN_YEAR) {
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_local);
+    lv_label_set_text(s_header_clock, buf);
+  } else {
+    lv_label_set_text(s_header_clock, HEADER_CLOCK_FALLBACK);
+  }
+}
+
+static void header_clock_timer_cb(lv_timer_t *timer) {
+  (void)timer;
+  header_clock_update();
+}
+
 static void footer_update(void) {
-  static const char *const nav_labels[DESKMON_PAGE_COUNT] = {"汇总", "天气", "传感", "备忘", "相册"};
+  static const char *const nav_labels[DESKMON_PAGE_COUNT] = {"首页", "天气", "传感", "备忘", "相册"};
 
   for (int i = 0; i < DESKMON_PAGE_COUNT; ++i) {
     lv_obj_t *item = s_footer_items[i];
@@ -114,10 +146,18 @@ static void footer_update(void) {
 
 static void show_page(deskmon_page_id_t page) {
   s_active_page = (page >= 0 && page < DESKMON_PAGE_COUNT) ? page : DESKMON_PAGE_SUMMARY;
+  if (s_snapshot_provider != NULL) {
+    s_snapshot_provider(&s_snapshot, s_snapshot_ctx);
+  }
   lv_label_set_text(s_header_title, deskmon_page_title(s_active_page));
   lv_obj_clean(s_content);
-  deskmon_page_create(s_active_page, s_content);
+  deskmon_page_create(s_active_page, s_content, &s_snapshot);
   footer_update();
+}
+
+static void display_data_timer_cb(lv_timer_t *timer) {
+  (void)timer;
+  show_page(s_active_page);
 }
 
 static void carousel_timer_cb(lv_timer_t *timer) {
@@ -136,6 +176,8 @@ static void apply_display_config(const deskmon_display_config_t *config) {
     s_enabled_pages[i] = config->enabled_pages[i];
   }
   s_carousel_period_ms = config->carousel_interval_sec * 1000U;
+  s_snapshot_provider = config->snapshot_provider;
+  s_snapshot_ctx = config->snapshot_ctx;
 }
 
 static void render_dashboard(const deskmon_display_config_t *config) {
@@ -148,6 +190,7 @@ static void render_dashboard(const deskmon_display_config_t *config) {
   lv_obj_set_style_bg_color(screen, lv_color_hex(0xF6F9FC), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_font(screen, &deskmon_font_14, 0);
+  deskmon_display_snapshot_defaults(&s_snapshot);
 
   lv_obj_t *header = lv_obj_create(screen);
   style_panel(header, lv_color_hex(0xFFFFFF), lv_color_hex(0xE5EAF0));
@@ -156,8 +199,9 @@ static void render_dashboard(const deskmon_display_config_t *config) {
   s_header_title = label_at(header, "", 0, 7, lv_color_hex(0x111827));
   lv_obj_set_width(s_header_title, 480);
   lv_obj_set_style_text_align(s_header_title, LV_TEXT_ALIGN_CENTER, 0);
-  label_at(header, "10:30   WiFi", 348, 7, lv_color_hex(0x111827));
-  label_at(header, "在线", 440, 7, lv_color_hex(0x21B650));
+  s_header_clock = label_at(header, HEADER_CLOCK_FALLBACK, 8, 7, lv_color_hex(0x111827));
+  label_at(header, "WiFi", 368, 7, lv_color_hex(0x111827));
+  label_at(header, "在线", 412, 7, lv_color_hex(0x21B650));
 
   s_content = lv_obj_create(screen);
   lv_obj_remove_flag(s_content, LV_OBJ_FLAG_SCROLLABLE);
@@ -183,6 +227,15 @@ static void render_dashboard(const deskmon_display_config_t *config) {
   }
 
   show_page(s_active_page);
+  header_clock_update();
+  lv_timer_t *clock_timer = lv_timer_create(header_clock_timer_cb, 1000, NULL);
+  if (clock_timer == NULL) {
+    ESP_LOGW(TAG, "header clock timer alloc failed; clock will be static");
+  }
+  lv_timer_t *data_timer = lv_timer_create(display_data_timer_cb, 30U * 1000U, NULL);
+  if (data_timer == NULL) {
+    ESP_LOGW(TAG, "display data timer alloc failed; pages refresh only on carousel");
+  }
   lv_timer_t *timer = lv_timer_create(carousel_timer_cb, s_carousel_period_ms, NULL);
   if (timer == NULL) {
     ESP_LOGW(TAG, "carousel timer alloc failed; display will be static");

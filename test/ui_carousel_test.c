@@ -6,7 +6,7 @@
 
 static void test_page_count_and_titles(void) {
   assert(DESKMON_PAGE_COUNT == 5);
-  assert(strcmp(deskmon_page_title(DESKMON_PAGE_SUMMARY), "汇总") == 0);
+  assert(strcmp(deskmon_page_title(DESKMON_PAGE_SUMMARY), "首页") == 0);
   assert(strcmp(deskmon_page_title(DESKMON_PAGE_WEATHER), "天气") == 0);
   assert(strcmp(deskmon_page_title(DESKMON_PAGE_SENSOR), "传感器") == 0);
   assert(strcmp(deskmon_page_title(DESKMON_PAGE_MEMO), "备忘") == 0);

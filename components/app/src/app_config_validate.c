@@ -33,6 +33,7 @@ void deskmon_config_set_defaults(deskmon_config_t *config) {
   strcpy(config->timezone, "CST-8");
   config->carousel_interval_sec = DESKMON_CONFIG_DEFAULT_CAROUSEL_SEC;
   config->sensor_read_interval_sec = DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC;
+  config->weather_refresh_interval_min = DESKMON_CONFIG_DEFAULT_WEATHER_REFRESH_MIN;
   config->sensor_history_retention_hours = DESKMON_CONFIG_DEFAULT_SENSOR_HISTORY_HOURS;
   config->enabled_pages.summary = true;
   config->enabled_pages.weather = true;
@@ -96,6 +97,11 @@ deskmon_config_status_t deskmon_config_validate(const deskmon_config_t *config) 
     return DESKMON_CONFIG_ERR_SENSOR_READ_INTERVAL;
   }
 
+  if (config->weather_refresh_interval_min < DESKMON_CONFIG_MIN_WEATHER_REFRESH_MIN ||
+      config->weather_refresh_interval_min > DESKMON_CONFIG_MAX_WEATHER_REFRESH_MIN) {
+    return DESKMON_CONFIG_ERR_WEATHER_REFRESH_INTERVAL;
+  }
+
   if (config->sensor_history_retention_hours < DESKMON_CONFIG_MIN_SENSOR_HISTORY_HOURS ||
       config->sensor_history_retention_hours > DESKMON_CONFIG_MAX_SENSOR_HISTORY_HOURS) {
     return DESKMON_CONFIG_ERR_SENSOR_HISTORY_RETENTION;
@@ -124,6 +130,8 @@ const char *deskmon_config_status_name(deskmon_config_status_t status) {
     return "invalid carousel interval";
   case DESKMON_CONFIG_ERR_SENSOR_READ_INTERVAL:
     return "invalid sensor read interval";
+  case DESKMON_CONFIG_ERR_WEATHER_REFRESH_INTERVAL:
+    return "invalid weather refresh interval";
   case DESKMON_CONFIG_ERR_SENSOR_HISTORY_RETENTION:
     return "invalid sensor history retention";
   case DESKMON_CONFIG_ERR_NTP_SERVER:

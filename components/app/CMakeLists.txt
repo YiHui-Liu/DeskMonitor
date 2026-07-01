@@ -3,6 +3,7 @@ idf_component_register(
         "src/app_config.c"
         "src/app_config_json.c"
         "src/app_config_validate.c"
+        "src/app_display_data.c"
         "src/app_diagnostics.c"
         "src/app_httpd.c"
         "src/app_ota.c"
@@ -25,4 +26,5 @@ idf_component_register(
         joltwallet__littlefs
         mbedtls
         sensors
+        ui
 )

@@ -52,6 +52,7 @@ char *deskmon_config_to_json(const deskmon_config_t *config) {
   cJSON_AddStringToObject(root, "timezone", config->timezone);
   cJSON_AddNumberToObject(root, "carousel_interval_sec", config->carousel_interval_sec);
   cJSON_AddNumberToObject(root, "sensor_read_interval_sec", config->sensor_read_interval_sec);
+  cJSON_AddNumberToObject(root, "weather_refresh_interval_min", config->weather_refresh_interval_min);
   cJSON_AddNumberToObject(root, "sensor_history_retention_hours", config->sensor_history_retention_hours);
   add_pages(root, &config->enabled_pages);
 
@@ -95,6 +96,11 @@ deskmon_config_status_t deskmon_config_from_json(const char *json, deskmon_confi
   cJSON *sensor_interval = cJSON_GetObjectItemCaseSensitive(root, "sensor_read_interval_sec");
   if (cJSON_IsNumber(sensor_interval)) {
     next.sensor_read_interval_sec = (uint32_t)sensor_interval->valuedouble;
+  }
+
+  cJSON *weather_interval = cJSON_GetObjectItemCaseSensitive(root, "weather_refresh_interval_min");
+  if (cJSON_IsNumber(weather_interval)) {
+    next.weather_refresh_interval_min = (uint32_t)weather_interval->valuedouble;
   }
 
   cJSON *sensor_history = cJSON_GetObjectItemCaseSensitive(root, "sensor_history_retention_hours");

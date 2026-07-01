@@ -6,6 +6,7 @@
 
 #include "app/app_config.h"
 #include "app/app_diagnostics.h"
+#include "app/app_display_data.h"
 #include "app/app_httpd.h"
 #include "app/app_storage.h"
 #include "app/app_time.h"
@@ -27,6 +28,7 @@ static deskmon_display_config_t display_config_from_app_config(const deskmon_con
               config->enabled_pages.album,
           },
       .carousel_interval_sec = config->carousel_interval_sec,
+      .snapshot_provider = deskmon_display_data_snapshot,
   };
 }
 
@@ -50,6 +52,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(deskmon_wifi_start(&s_config));
   ESP_ERROR_CHECK(deskmon_time_apply_config(&s_config));
   ESP_ERROR_CHECK(deskmon_httpd_start(&s_config));
+  ESP_ERROR_CHECK(deskmon_display_data_start(&s_config));
 
   const deskmon_display_config_t display_config = display_config_from_app_config(&s_config);
   esp_err_t display_err = deskmon_display_init(&display_config);

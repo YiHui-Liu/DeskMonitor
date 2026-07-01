@@ -1,7 +1,7 @@
 #include "ui/ui_carousel.h"
 
 static const char *const s_page_titles[DESKMON_PAGE_COUNT] = {
-    "汇总",
+    "首页",
     "天气",
     "传感器",
     "备忘",
@@ -10,7 +10,7 @@ static const char *const s_page_titles[DESKMON_PAGE_COUNT] = {
 
 const char *deskmon_page_title(deskmon_page_id_t page) {
   if (page < 0 || page >= DESKMON_PAGE_COUNT) {
-    return "汇总";
+    return "首页";
   }
   return s_page_titles[page];
 }
