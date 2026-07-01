@@ -1,3 +1,4 @@
+#include "ui/ui_font.h"
 #include "ui/ui_pages.h"
 
 static void style_plain(lv_obj_t *obj) {
@@ -26,6 +27,7 @@ static lv_obj_t *label_create(lv_obj_t *parent, const char *text, int32_t x, int
   lv_label_set_text(label, text);
   lv_obj_set_pos(label, x, y);
   lv_obj_set_style_text_color(label, color, 0);
+  lv_obj_set_style_text_font(label, &deskmon_font_14, 0);
   return label;
 }
 
@@ -35,13 +37,37 @@ static void label_center(lv_obj_t *parent, const char *text, int32_t y, lv_color
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 }
 
-static void metric_card(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, const char *icon, const char *name,
-                        const char *reading, const char *status, lv_color_t accent) {
-  lv_obj_t *card = card_create(parent, x, y, w, 70);
-  label_create(card, icon, 4, 2, accent);
-  label_create(card, name, 28, 4, lv_color_hex(0x1F2937));
-  label_center(card, reading, 26, lv_color_hex(0x111827));
-  label_center(card, status, 50, accent);
+/* ---- Sensor page sparkline data (8 points each, x: 0-140 step 20, y: 0-40 inverted) ---- */
+
+static const lv_point_precise_t spark_temp[] = {
+    {0, 30}, {20, 25}, {40, 18}, {60, 8}, {80, 5}, {100, 12}, {120, 22}, {140, 28}};
+static const lv_point_precise_t spark_humid[] = {
+    {0, 10}, {20, 15}, {40, 22}, {60, 30}, {80, 35}, {100, 28}, {120, 18}, {140, 12}};
+static const lv_point_precise_t spark_light[] = {
+    {0, 38}, {20, 35}, {40, 25}, {60, 12}, {80, 5}, {100, 15}, {120, 30}, {140, 38}};
+static const lv_point_precise_t spark_co2[] = {
+    {0, 25}, {20, 20}, {40, 15}, {60, 8}, {80, 5}, {100, 10}, {120, 18}, {140, 22}};
+static const lv_point_precise_t spark_tvoc[] = {
+    {0, 30}, {20, 28}, {40, 20}, {60, 5}, {80, 15}, {100, 25}, {120, 22}, {140, 28}};
+static const lv_point_precise_t spark_aqi[] = {
+    {0, 20}, {20, 18}, {40, 22}, {60, 15}, {80, 25}, {100, 20}, {120, 18}, {140, 22}};
+
+static void sensor_pad(lv_obj_t *parent, int32_t x, int32_t y, const char *icon, const char *name,
+                       const char *reading, const char *status, const char *stats, lv_color_t accent,
+                       const lv_point_precise_t *pts, uint16_t cnt) {
+  lv_obj_t *card = card_create(parent, x, y, 153, 113);
+  label_create(card, icon, 0, 0, accent);
+  label_create(card, name, 20, 1, lv_color_hex(0x1F2937));
+  label_create(card, reading, 88, 1, lv_color_hex(0x111827));
+  label_create(card, status, 0, 20, accent);
+  label_create(card, stats, 0, 40, lv_color_hex(0x4B5563));
+
+  lv_obj_t *line = lv_line_create(card);
+  lv_line_set_points(line, pts, cnt);
+  lv_obj_set_pos(line, 0, 58);
+  lv_obj_set_style_line_color(line, accent, 0);
+  lv_obj_set_style_line_width(line, 2, 0);
+  lv_obj_set_style_line_rounded(line, true, 0);
 }
 
 static void render_summary(lv_obj_t *parent) {
@@ -59,12 +85,9 @@ static void render_summary(lv_obj_t *parent) {
   label_create(memo, "· 15:00 设备巡检    · 17:30 更换滤网    · 20:00 关闭新风", 112, 12, lv_color_hex(0x111827));
 
   label_create(parent, "传感器摘要", 14, 138, lv_color_hex(0x155CC9));
-  metric_card(parent, 8, 164, 72, "温", "温度", "27.4°C", "舒适", lv_color_hex(0xEF4444));
-  metric_card(parent, 86, 164, 72, "湿", "湿度", "62%", "舒适", lv_color_hex(0x228BE6));
-  metric_card(parent, 164, 164, 72, "光", "光照", "512lx", "适中", lv_color_hex(0xF59E0B));
-  metric_card(parent, 242, 164, 72, "C", "CO2", "724", "良好", lv_color_hex(0x22A652));
-  metric_card(parent, 320, 164, 72, "气", "TVOC", "0.38", "优", lv_color_hex(0x7C5CC4));
-  metric_card(parent, 398, 164, 74, "空", "AQI", "32", "优", lv_color_hex(0x2D9CA3));
+  label_create(parent, "温度 27.4°C  湿度 62%  光照 512lx", 14, 158, lv_color_hex(0x1F2937));
+  label_create(parent, "CO2 724ppm  TVOC 0.38  AQI 32", 14, 176, lv_color_hex(0x1F2937));
+  label_create(parent, "详细数据见传感页", 14, 200, lv_color_hex(0x606A78));
 }
 
 static void render_weather(lv_obj_t *parent) {
@@ -91,20 +114,18 @@ static void render_weather(lv_obj_t *parent) {
 }
 
 static void render_sensor(lv_obj_t *parent) {
-  metric_card(parent, 8, 8, 70, "温", "温度", "27.4", "舒适", lv_color_hex(0xEF4444));
-  metric_card(parent, 86, 8, 70, "湿", "湿度", "62%", "舒适", lv_color_hex(0x228BE6));
-  metric_card(parent, 164, 8, 70, "光", "光照", "512", "适中", lv_color_hex(0xF59E0B));
-  metric_card(parent, 242, 8, 70, "C", "CO2", "724", "良好", lv_color_hex(0x22A652));
-  metric_card(parent, 320, 8, 70, "气", "TVOC", "0.38", "优", lv_color_hex(0x7C5CC4));
-  metric_card(parent, 398, 8, 74, "空", "AQI", "32", "优", lv_color_hex(0x2D9CA3));
-
-  label_create(parent, "24小时趋势", 14, 88, lv_color_hex(0x155CC9));
-  const char *charts[] = {"温度  24 26 29 30 28 27", "湿度  78 70 56 45 58 62", "光照  0 80 860 1800 512 0",
-                          "CO2  520 610 724 910 680", "TVOC 0.18 0.28 0.56 0.38", "AQI  21 32 42 32"};
-  for (int i = 0; i < 6; ++i) {
-    lv_obj_t *card = card_create(parent, 8 + (i % 3) * 154, 114 + (i / 3) * 62, 146, 54);
-    label_create(card, charts[i], 6, 18, lv_color_hex(0x1F2937));
-  }
+  sensor_pad(parent, 4, 4, "温", "温度", "27.4°C", "舒适", "大29 小24 均27", lv_color_hex(0xEF4444),
+             spark_temp, 8);
+  sensor_pad(parent, 163, 4, "湿", "湿度", "62%", "舒适", "大70 小50 均60", lv_color_hex(0x228BE6),
+             spark_humid, 8);
+  sensor_pad(parent, 322, 4, "光", "光照", "512lx", "适中", "大1800 小0 均760", lv_color_hex(0xF59E0B),
+             spark_light, 8);
+  sensor_pad(parent, 4, 123, "C", "CO2", "724ppm", "良好", "大900 小520 均680", lv_color_hex(0x22A652),
+             spark_co2, 8);
+  sensor_pad(parent, 163, 123, "气", "TVOC", "0.38", "优", "大0.50 小0.15 均0.33", lv_color_hex(0x7C5CC4),
+             spark_tvoc, 8);
+  sensor_pad(parent, 322, 123, "空", "AQI", "32", "优", "大42 小21 均31", lv_color_hex(0x2D9CA3),
+             spark_aqi, 8);
 }
 
 static void render_memo(lv_obj_t *parent) {

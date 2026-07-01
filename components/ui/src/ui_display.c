@@ -6,6 +6,7 @@
 
 #include "bsp/bsp_io.h"
 #include "ui/ui_carousel.h"
+#include "ui/ui_font.h"
 #include "ui/ui_pages.h"
 
 #include "draw/sw/lv_draw_sw_utils.h"
@@ -88,6 +89,7 @@ static lv_obj_t *label_at(lv_obj_t *parent, const char *text, int32_t x, int32_t
   lv_label_set_text(label, text);
   lv_obj_set_pos(label, x, y);
   lv_obj_set_style_text_color(label, color, 0);
+  lv_obj_set_style_text_font(label, &deskmon_font_14, 0);
   return label;
 }
 
@@ -145,6 +147,7 @@ static void render_dashboard(const deskmon_display_config_t *config) {
   lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(screen, lv_color_hex(0xF6F9FC), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_font(screen, &deskmon_font_14, 0);
 
   lv_obj_t *header = lv_obj_create(screen);
   style_panel(header, lv_color_hex(0xFFFFFF), lv_color_hex(0xE5EAF0));
