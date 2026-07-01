@@ -5,24 +5,27 @@
 #include <stdint.h>
 #include <time.h>
 
+#include <draw/sw/lv_draw_sw_utils.h>
+#include <driver/gpio.h>
+#include <driver/spi_master.h>
+#include <esp_err.h>
+#include <esp_lcd_panel_io.h>
+#include <esp_lcd_panel_ops.h>
+#include <esp_lcd_st7796.h>
+#include <esp_log.h>
+#include <esp_netif.h>
+#include <esp_timer.h>
+#include <esp_wifi.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
+#include <lvgl.h>
+
 #include "bsp/bsp_io.h"
 #include "ui/ui_carousel.h"
+#include "ui/ui_display_state.h"
 #include "ui/ui_font.h"
 #include "ui/ui_pages.h"
-
-#include "draw/sw/lv_draw_sw_utils.h"
-#include "driver/gpio.h"
-#include "driver/spi_master.h"
-#include "esp_err.h"
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_ops.h"
-#include "esp_lcd_st7796.h"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
-#include "lvgl.h"
 
 static const char *TAG = "deskmon_display";
 
@@ -31,7 +34,8 @@ static const char *TAG = "deskmon_display";
  * The flush callback waits for ESP LCD's transfer-done callback before letting
  * LVGL reuse the active buffer. */
 #define DISPLAY_BUF_LINES 20
-#define DISPLAY_BUF_STRIDE (DESKMON_DISPLAY_WIDTH > DESKMON_DISPLAY_HEIGHT ? DESKMON_DISPLAY_WIDTH : DESKMON_DISPLAY_HEIGHT)
+#define DISPLAY_BUF_STRIDE                                                                                             \
+  (DESKMON_DISPLAY_WIDTH > DESKMON_DISPLAY_HEIGHT ? DESKMON_DISPLAY_WIDTH : DESKMON_DISPLAY_HEIGHT)
 #define DISPLAY_BUF_BYTES (DISPLAY_BUF_STRIDE * DISPLAY_BUF_LINES * LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565))
 
 static esp_lcd_panel_handle_t s_panel;
@@ -39,16 +43,23 @@ static lv_display_t *s_display;
 static SemaphoreHandle_t s_flush_done_sem;
 static lv_obj_t *s_header_title;
 static lv_obj_t *s_header_clock;
+static lv_obj_t *s_header_wifi;
+static lv_obj_t *s_header_ip;
 static lv_obj_t *s_content;
 static lv_obj_t *s_footer_items[DESKMON_PAGE_COUNT];
 static deskmon_page_id_t s_active_page = DESKMON_PAGE_SUMMARY;
 static bool s_enabled_pages[DESKMON_PAGE_COUNT] = {true, true, true, true, true};
 static uint32_t s_carousel_period_ms = 15U * 1000U;
+static lv_timer_t *s_carousel_timer;
+static SemaphoreHandle_t s_config_lock;
+static deskmon_display_config_state_t s_config_state;
 static deskmon_display_snapshot_t s_snapshot;
 static deskmon_display_snapshot_provider_t s_snapshot_provider;
 static void *s_snapshot_ctx;
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t s_draw_buf1[DISPLAY_BUF_BYTES];
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t s_draw_buf2[DISPLAY_BUF_BYTES];
+
+static void show_page(deskmon_page_id_t page);
 
 static uint32_t display_tick_cb(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
@@ -98,10 +109,7 @@ static lv_obj_t *label_at(lv_obj_t *parent, const char *text, int32_t x, int32_t
   return label;
 }
 
-/* Header clock shows date + time with seconds. Until the system clock is set
- * (it boots at the epoch), keep the literal fallback so the header always
- * reads sensibly. Only the local RTC is read here -- no SNTP/network plumbing. */
-#define HEADER_CLOCK_FALLBACK "2026-06-30 10:30:00"
+/* Header clock shows date + time with seconds.  */
 /* tm_year is years since 1900; treat anything in 2020+ as a set clock. */
 #define HEADER_CLOCK_MIN_YEAR (2020 - 1900)
 
@@ -114,15 +122,71 @@ static void header_clock_update(void) {
   char buf[24] = {0};
   if (now > 0 && localtime_r(&now, &tm_local) != NULL && tm_local.tm_year >= HEADER_CLOCK_MIN_YEAR) {
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_local);
-    lv_label_set_text(s_header_clock, buf);
   } else {
-    lv_label_set_text(s_header_clock, HEADER_CLOCK_FALLBACK);
+    int64_t uptime_ms = esp_timer_get_time() / 1000;
+    snprintf(buf, sizeof(buf), "UP Time: %d s", (int)(uptime_ms / 1000));
+  }
+  lv_label_set_text(s_header_clock, buf);
+}
+
+static void header_status_update(void) {
+  if (s_header_wifi == NULL || s_header_ip == NULL) {
+    return;
+  }
+
+  wifi_mode_t mode;
+  if (esp_wifi_get_mode(&mode) != ESP_OK || mode == WIFI_MODE_NULL) {
+    lv_label_set_text(s_header_wifi, "OFF");
+    lv_label_set_text(s_header_ip, "--");
+    return;
+  }
+
+  lv_label_set_text(s_header_wifi, mode == WIFI_MODE_AP ? "AP" : "WiFi");
+  esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  esp_netif_ip_info_t ip_info;
+  if (netif == NULL || esp_netif_get_ip_info(netif, &ip_info) != ESP_OK || ip_info.ip.addr == 0) {
+    lv_label_set_text(s_header_ip, "--");
+    return;
+  }
+
+  char ip_buf[16];
+  snprintf(ip_buf, sizeof(ip_buf), IPSTR, IP2STR(&ip_info.ip));
+  lv_label_set_text(s_header_ip, ip_buf);
+}
+
+static void display_config_update(void) {
+  if (s_config_lock == NULL) {
+    return;
+  }
+  if (xSemaphoreTake(s_config_lock, 0) != pdTRUE) {
+    return;
+  }
+  bool changed = false;
+  const bool consumed = deskmon_display_config_state_consume(&s_config_state, &changed);
+  if (consumed && changed) {
+    for (int i = 0; i < DESKMON_PAGE_COUNT; ++i) {
+      s_enabled_pages[i] = s_config_state.enabled_pages[i];
+    }
+    s_carousel_period_ms = s_config_state.carousel_period_ms;
+  }
+  xSemaphoreGive(s_config_lock);
+
+  if (!consumed || !changed) {
+    return;
+  }
+  if (s_carousel_timer != NULL) {
+    lv_timer_set_period(s_carousel_timer, s_carousel_period_ms);
+  }
+  if (!s_enabled_pages[s_active_page]) {
+    show_page(deskmon_carousel_next_enabled(s_active_page, s_enabled_pages));
   }
 }
 
 static void header_clock_timer_cb(lv_timer_t *timer) {
   (void)timer;
   header_clock_update();
+  header_status_update();
+  display_config_update();
 }
 
 static void footer_update(void) {
@@ -176,6 +240,7 @@ static void apply_display_config(const deskmon_display_config_t *config) {
     s_enabled_pages[i] = config->enabled_pages[i];
   }
   s_carousel_period_ms = config->carousel_interval_sec * 1000U;
+  deskmon_display_config_state_init(&s_config_state, s_enabled_pages, s_carousel_period_ms);
   s_snapshot_provider = config->snapshot_provider;
   s_snapshot_ctx = config->snapshot_ctx;
 }
@@ -190,7 +255,6 @@ static void render_dashboard(const deskmon_display_config_t *config) {
   lv_obj_set_style_bg_color(screen, lv_color_hex(0xF6F9FC), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_font(screen, &deskmon_font_14, 0);
-  deskmon_display_snapshot_defaults(&s_snapshot);
 
   lv_obj_t *header = lv_obj_create(screen);
   style_panel(header, lv_color_hex(0xFFFFFF), lv_color_hex(0xE5EAF0));
@@ -199,9 +263,9 @@ static void render_dashboard(const deskmon_display_config_t *config) {
   s_header_title = label_at(header, "", 0, 7, lv_color_hex(0x111827));
   lv_obj_set_width(s_header_title, 480);
   lv_obj_set_style_text_align(s_header_title, LV_TEXT_ALIGN_CENTER, 0);
-  s_header_clock = label_at(header, HEADER_CLOCK_FALLBACK, 8, 7, lv_color_hex(0x111827));
-  label_at(header, "WiFi", 368, 7, lv_color_hex(0x111827));
-  label_at(header, "在线", 412, 7, lv_color_hex(0x21B650));
+  s_header_clock = label_at(header, "Loading", 8, 7, lv_color_hex(0x111827));
+  s_header_wifi = label_at(header, "--", 320, 7, lv_color_hex(0x111827));
+  s_header_ip = label_at(header, "--", 380, 7, lv_color_hex(0x21B650));
 
   s_content = lv_obj_create(screen);
   lv_obj_remove_flag(s_content, LV_OBJ_FLAG_SCROLLABLE);
@@ -228,16 +292,17 @@ static void render_dashboard(const deskmon_display_config_t *config) {
 
   show_page(s_active_page);
   header_clock_update();
+  header_status_update();
   lv_timer_t *clock_timer = lv_timer_create(header_clock_timer_cb, 1000, NULL);
   if (clock_timer == NULL) {
     ESP_LOGW(TAG, "header clock timer alloc failed; clock will be static");
   }
-  lv_timer_t *data_timer = lv_timer_create(display_data_timer_cb, 30U * 1000U, NULL);
+  lv_timer_t *data_timer = lv_timer_create(display_data_timer_cb, 1000, NULL);
   if (data_timer == NULL) {
     ESP_LOGW(TAG, "display data timer alloc failed; pages refresh only on carousel");
   }
-  lv_timer_t *timer = lv_timer_create(carousel_timer_cb, s_carousel_period_ms, NULL);
-  if (timer == NULL) {
+  s_carousel_timer = lv_timer_create(carousel_timer_cb, s_carousel_period_ms, NULL);
+  if (s_carousel_timer == NULL) {
     ESP_LOGW(TAG, "carousel timer alloc failed; display will be static");
   }
 }
@@ -380,6 +445,13 @@ static esp_err_t init_lvgl(const deskmon_display_config_t *config) {
   lv_init();
   lv_tick_set_cb(display_tick_cb);
 
+  if (s_config_lock == NULL) {
+    s_config_lock = xSemaphoreCreateMutex();
+    if (s_config_lock == NULL) {
+      return ESP_ERR_NO_MEM;
+    }
+  }
+
   const int32_t hor_res = DESKMON_DISPLAY_SWAP_XY ? DESKMON_DISPLAY_HEIGHT : DESKMON_DISPLAY_WIDTH;
   const int32_t ver_res = DESKMON_DISPLAY_SWAP_XY ? DESKMON_DISPLAY_WIDTH : DESKMON_DISPLAY_HEIGHT;
   s_display = lv_display_create(hor_res, ver_res);
@@ -425,6 +497,19 @@ esp_err_t deskmon_display_init(const deskmon_display_config_t *config) {
            DESKMON_DISPLAY_DC_GPIO, DESKMON_DISPLAY_BL_GPIO);
   return ESP_OK;
 #endif
+}
+
+void deskmon_display_apply_config(const bool enabled_pages[DESKMON_PAGE_COUNT], uint32_t carousel_interval_sec) {
+  const uint32_t carousel_period_ms = carousel_interval_sec * 1000U;
+  if (s_config_lock == NULL) {
+    deskmon_display_config_state_set_pending(&s_config_state, enabled_pages, carousel_period_ms);
+    return;
+  }
+  if (xSemaphoreTake(s_config_lock, pdMS_TO_TICKS(50)) != pdTRUE) {
+    return;
+  }
+  deskmon_display_config_state_set_pending(&s_config_state, enabled_pages, carousel_period_ms);
+  xSemaphoreGive(s_config_lock);
 }
 
 bool deskmon_display_is_enabled(void) { return DESKMON_DISPLAY_ENABLED != 0; }

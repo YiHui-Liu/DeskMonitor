@@ -22,6 +22,7 @@
 #include "app/app_ota.h"
 #include "app/app_time.h"
 #include "app/app_wifi.h"
+#include "ui/ui_display.h"
 
 static const char *TAG = "deskmon_httpd";
 static const size_t MAX_POST_BODY = 2048;
@@ -315,6 +316,11 @@ static esp_err_t config_post_handler(httpd_req_t *req) {
   }
 
   *s_config = next;
+  const bool enabled_pages[DESKMON_PAGE_COUNT] = {
+      s_config->enabled_pages.summary, s_config->enabled_pages.weather, s_config->enabled_pages.sensor,
+      s_config->enabled_pages.memo,    s_config->enabled_pages.album,
+  };
+  deskmon_display_apply_config(enabled_pages, s_config->carousel_interval_sec);
   err = deskmon_time_apply_config(s_config);
   if (err != ESP_OK) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "time config apply failed");
