@@ -3,7 +3,9 @@ idf_component_register(
         "src/ui_button.c"
         "src/ui_carousel.c"
         "src/ui_display.c"
+        "src/ui_display_state.c"
         "src/ui_font_custom.c"
+        "src/ui_history_points.c"
         "src/ui_pages.c"
     INCLUDE_DIRS
         "include"
@@ -12,7 +14,9 @@ idf_component_register(
         esp_driver_gpio
         esp_driver_spi
         esp_lcd
+        esp_netif
         esp_timer
+        esp_wifi
         espressif__esp_lcd_st7796
         lvgl__lvgl
 )
