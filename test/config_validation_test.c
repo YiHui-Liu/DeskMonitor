@@ -12,7 +12,6 @@ static void test_defaults_are_safe_for_first_boot(void) {
   assert(config.carousel_interval_sec == DESKMON_CONFIG_DEFAULT_CAROUSEL_SEC);
   assert(config.sensor_read_interval_sec == DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC);
   assert(config.weather_refresh_interval_min == DESKMON_CONFIG_DEFAULT_WEATHER_REFRESH_MIN);
-  assert(config.sensor_history_retention_hours == DESKMON_CONFIG_DEFAULT_SENSOR_HISTORY_HOURS);
   assert(strcmp(config.ntp_server, "pool.ntp.org") == 0);
   assert(strcmp(config.timezone, "CST-8") == 0);
   assert(config.enabled_pages.summary);
@@ -68,10 +67,6 @@ static void test_rejects_invalid_wifi_and_carousel_values(void) {
   deskmon_config_set_defaults(&config);
   config.sensor_read_interval_sec = 0;
   assert(deskmon_config_validate(&config) == DESKMON_CONFIG_ERR_SENSOR_READ_INTERVAL);
-
-  deskmon_config_set_defaults(&config);
-  config.sensor_history_retention_hours = 0;
-  assert(deskmon_config_validate(&config) == DESKMON_CONFIG_ERR_SENSOR_HISTORY_RETENTION);
 
   deskmon_config_set_defaults(&config);
   config.weather_refresh_interval_min = DESKMON_CONFIG_MIN_WEATHER_REFRESH_MIN;

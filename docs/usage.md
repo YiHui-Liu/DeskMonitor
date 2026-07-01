@@ -89,9 +89,8 @@ Content-Type: application/json
 | `page_summary_note` | 汇总页文字 | 最长 128 字符 | `Desk Monitor / 桌面监视器` |
 | `ntp_server` | NTP 服务器 | 最长 64 字符；不能为空 | `pool.ntp.org` |
 | `timezone` | POSIX 时区字符串 | 最长 64 字符；不能为空 | `CST-8` |
-| `carousel_interval_sec` | 页面轮播间隔 | `5 - 3600` 秒 | `15` |
+| `carousel_interval_sec` | 页面轮播间隔 | `1 - 3600` 秒 | `10` |
 | `sensor_read_interval_sec` | 传感器读取周期配置 | `1 - 3600` 秒 | `30` |
-| `sensor_history_retention_hours` | 传感器历史保留配置 | `1 - 720` 小时 | `24` |
 | `pages.summary` | 是否启用汇总页 | 至少启用一个页面 | 启用 |
 | `pages.weather` | 是否启用天气页 | 至少启用一个页面 | 启用 |
 | `pages.sensor` | 是否启用传感器页 | 至少启用一个页面 | 启用 |
@@ -117,9 +116,8 @@ Content-Type: application/json
   "page_summary_note": "Desk Monitor / 桌面监视器",
   "ntp_server": "pool.ntp.org",
   "timezone": "CST-8",
-  "carousel_interval_sec": 15,
+  "carousel_interval_sec": 10,
   "sensor_read_interval_sec": 30,
-  "sensor_history_retention_hours": 24,
   "pages": {
     "summary": true,
     "weather": true,
@@ -132,7 +130,8 @@ Content-Type: application/json
 
 注意：
 
-- `sensor_read_interval_sec` 和 `sensor_history_retention_hours` 已经进入配置项，但当前传感器读数仍是 `/api/diagnostics` 按需读取，后台定时采样和历史曲线还没有启用。
+- 显示页按 `sensor_read_interval_sec` 后台刷新传感器快照；历史曲线保留内存中最近 50 个采样点（无持久化配置），下采样为 8 点曲线显示。
+- `wifi_password` 与 `qweather_api_key` 为只写字段：`GET /api/config` 返回空串及 `has_*` 布尔；POST 省略该字段表示保留旧值，填入新值表示覆盖。
 - 页面开关至少需要保留一个启用项，否则保存会失败。
 - `/api/diagnostics` 是唯一诊断路径，不提供单数形式的诊断路径。
 

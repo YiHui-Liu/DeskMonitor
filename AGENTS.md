@@ -41,7 +41,8 @@ After changing `sdkconfig.defaults`, delete `sdkconfig.esp32dev` (gitignored) to
 - **Display runtime is enabled.** The ST7796S panel uses ESP-IDF `esp_lcd` + LVGL through `components/ui/src/ui_display.c`, with backlight GPIO output on IO27.
 - **Buttons, touch, SD card, and TF album runtime remain intentionally disabled.** Do not add button/touch interrupt GPIO init, `esp_lcd_touch`, `xpt2046`, `esp_vfs_fat_sd`, `sdspi_*`, or `sdmmc_*` calls in `src/` or `components/`. `verify_constraints.sh` will fail.
 - **No `/api/diagnostic` singular alias.** The diagnostics endpoint is `/api/diagnostics` only.
-- **Sensor reads are on-demand** (triggered by `/api/diagnostics` requests). `sensor_read_interval_sec` and `sensor_history_retention_hours` are config-only placeholders with no runtime consumer yet.
+- `/api/diagnostics` sensor reads are on-demand. The display data task also refreshes the display snapshot using `sensor_read_interval_sec`. Sensor history is an in-memory ring of the last 50 reads, downsampled to the UI sparkline; there is no persisted history config.
+- **Secrets are write-only over the API.** `GET /api/config` returns `wifi_password` and `qweather_api_key` as empty strings with `has_wifi_password` / `has_qweather_api_key` booleans. POST omits a field to preserve the stored value, or sends a new value to overwrite.
 
 ## API
 

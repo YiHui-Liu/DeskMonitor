@@ -44,8 +44,12 @@ char *deskmon_config_to_json(const deskmon_config_t *config) {
   }
 
   cJSON_AddStringToObject(root, "wifi_ssid", config->wifi_ssid);
-  cJSON_AddStringToObject(root, "wifi_password", config->wifi_password);
-  cJSON_AddStringToObject(root, "qweather_api_key", config->qweather_api_key);
+  /* Secrets are write-only: never echo them back. Callers learn whether a
+   * value is already stored via the has_* flags and POST a new value to set. */
+  cJSON_AddStringToObject(root, "wifi_password", "");
+  cJSON_AddBoolToObject(root, "has_wifi_password", config->wifi_password[0] != '\0');
+  cJSON_AddStringToObject(root, "qweather_api_key", "");
+  cJSON_AddBoolToObject(root, "has_qweather_api_key", config->qweather_api_key[0] != '\0');
   cJSON_AddStringToObject(root, "qweather_location", config->qweather_location);
   cJSON_AddStringToObject(root, "page_summary_note", config->page_summary_note);
   cJSON_AddStringToObject(root, "ntp_server", config->ntp_server);
@@ -53,7 +57,6 @@ char *deskmon_config_to_json(const deskmon_config_t *config) {
   cJSON_AddNumberToObject(root, "carousel_interval_sec", config->carousel_interval_sec);
   cJSON_AddNumberToObject(root, "sensor_read_interval_sec", config->sensor_read_interval_sec);
   cJSON_AddNumberToObject(root, "weather_refresh_interval_min", config->weather_refresh_interval_min);
-  cJSON_AddNumberToObject(root, "sensor_history_retention_hours", config->sensor_history_retention_hours);
   add_pages(root, &config->enabled_pages);
 
   char *json = cJSON_PrintUnformatted(root);
@@ -101,11 +104,6 @@ deskmon_config_status_t deskmon_config_from_json(const char *json, deskmon_confi
   cJSON *weather_interval = cJSON_GetObjectItemCaseSensitive(root, "weather_refresh_interval_min");
   if (cJSON_IsNumber(weather_interval)) {
     next.weather_refresh_interval_min = (uint32_t)weather_interval->valuedouble;
-  }
-
-  cJSON *sensor_history = cJSON_GetObjectItemCaseSensitive(root, "sensor_history_retention_hours");
-  if (cJSON_IsNumber(sensor_history)) {
-    next.sensor_history_retention_hours = (uint32_t)sensor_history->valuedouble;
   }
 
   cJSON *pages = cJSON_GetObjectItemCaseSensitive(root, "pages");

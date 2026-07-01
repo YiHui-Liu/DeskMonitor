@@ -453,17 +453,12 @@
 
                         <label>
                             轮播间隔 [s]
-                            <input name="carousel_interval_sec" type="number">
+                            <input name="carousel_interval_sec" type="number" min="1" max="3600">
                         </label>
 
                         <label>
                             读取间隔 [s]
                             <input name="sensor_read_interval_sec" type="number" min="1" max="3600">
-                        </label>
-
-                        <label>
-                            历史时长 [h]
-                            <input name="sensor_history_retention_hours" type="number" min="1" max="720">
                         </label>
 
                         <div class="checks">
@@ -659,19 +654,22 @@
             .then(config => {
                 [
                     'wifi_ssid',
-                    'wifi_password',
-                    'qweather_api_key',
                     'qweather_location',
                     'weather_refresh_interval_min',
                     'page_summary_title',
                     'carousel_interval_sec',
                     'sensor_read_interval_sec',
-                    'sensor_history_retention_hours',
                     'ntp_server',
                     'timezone'
                 ].forEach(key => {
                     $(key).value = config[key] || '';
                 });
+
+                // 密码与 API Key 只写不读：用占位符告知是否已设置，留空表示保留旧值
+                $('wifi_password').value = '';
+                $('wifi_password').placeholder = config.has_wifi_password ? '已设置（留空保留）' : '未设置';
+                $('qweather_api_key').value = '';
+                $('qweather_api_key').placeholder = config.has_qweather_api_key ? '已设置（留空保留）' : '未设置';
 
                 for (const key in config.pages) {
                     $(key).checked = config.pages[key];
@@ -690,14 +688,11 @@
 
             const body = {
                 wifi_ssid: $('wifi_ssid').value,
-                wifi_password: $('wifi_password').value,
-                qweather_api_key: $('qweather_api_key').value,
                 qweather_location: $('qweather_location').value,
                 weather_refresh_interval_min: Number($('weather_refresh_interval_min').value),
                 page_summary_title: $('page_summary_title').value,
                 carousel_interval_sec: Number($('carousel_interval_sec').value),
                 sensor_read_interval_sec: Number($('sensor_read_interval_sec').value),
-                sensor_history_retention_hours: Number($('sensor_history_retention_hours').value),
                 ntp_server: $('ntp_server').value,
                 timezone: $('timezone').value,
                 pages: {
@@ -708,6 +703,9 @@
                     album: $('album').checked
                 }
             };
+            // 仅当输入了新值才提交密钥字段；留空则保留设备上的旧值
+            if ($('wifi_password').value !== '') body.wifi_password = $('wifi_password').value;
+            if ($('qweather_api_key').value !== '') body.qweather_api_key = $('qweather_api_key').value;
 
             const response = await fetch('/api/config', {
                 method: 'POST',
