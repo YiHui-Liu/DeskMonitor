@@ -44,8 +44,9 @@ typedef struct {
 } deskmon_display_hourly_t;
 
 typedef struct {
-  char date[8];
-  char temp[12];
+  char date[12];
+  char low[8];
+  char high[8];
   deskmon_weather_icon_t icon;
 } deskmon_display_daily_t;
 
@@ -57,6 +58,8 @@ typedef struct {
   char weather_text[16];
   char temperature[12];
   char humidity[12];
+  char weather_temperature[12];
+  char weather_humidity[12];
   char wind[24];
   char high[12];
   char low[12];

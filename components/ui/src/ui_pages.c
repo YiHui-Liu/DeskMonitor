@@ -87,6 +87,40 @@ static void draw_weather_icon(lv_obj_t *parent, int32_t x, int32_t y, lv_color_t
   }
 }
 
+static void draw_weather_symbol(lv_obj_t *parent, int32_t x, int32_t y, deskmon_weather_icon_t icon, float scale) {
+  if (icon == DESKMON_WEATHER_ICON_SUN) {
+    const int32_t cx = x + 8 * scale;
+    const int32_t cy = y + 8 * scale;
+    icon_fill(parent, cx - 4 * scale, cy - 4 * scale, 8 * scale, 8 * scale, lv_color_hex(0xF5B800), 4 * scale);
+    static const int32_t rays[8][2] = {{7, 0}, {5, 5}, {0, 7}, {-5, 5}, {-7, 0}, {-5, -5}, {0, -7}, {5, -5}};
+    for (int i = 0; i < 8; ++i) {
+      icon_fill(parent, cx + rays[i][0] * scale - scale, cy + rays[i][1] * scale - scale, 2 * scale, 2 * scale,
+                lv_color_hex(0xF5B800), 0);
+    }
+    return;
+  }
+
+  icon_fill(parent, x + 1 * scale, y + 8 * scale, 14 * scale, 8 * scale, lv_color_hex(0xB7C8E0), 4 * scale);
+  icon_fill(parent, x + 5 * scale, y + 4 * scale, 12 * scale, 9 * scale, lv_color_hex(0xD7E4F2), 5 * scale);
+  if (icon == DESKMON_WEATHER_ICON_RAIN) {
+    icon_fill(parent, x + 5 * scale, y + 17 * scale, scale, 4 * scale, lv_color_hex(0x228BE6), 0);
+    icon_fill(parent, x + 11 * scale, y + 17 * scale, scale, 4 * scale, lv_color_hex(0x228BE6), 0);
+  }
+}
+
+static void draw_pressure_icon(lv_obj_t *parent, int32_t x, int32_t y, lv_color_t color) {
+  icon_rect(parent, x + 2, y + 3, 12, 10, color);
+  icon_fill(parent, x + 5, y + 1, 6, 3, color, 2);
+  icon_fill(parent, x + 5, y + 8, 6, 1, color, 0);
+}
+
+/* Precipitation: umbrella canopy + J-handle, distinct from the humidity droplet. */
+static void draw_precip_icon(lv_obj_t *parent, int32_t x, int32_t y, lv_color_t color) {
+  icon_fill(parent, x + 1, y + 5, 14, 4, color, 7);
+  icon_fill(parent, x + 7, y + 8, 2, 5, color, 0);
+  icon_fill(parent, x + 5, y + 12, 4, 2, color, 1);
+}
+
 /* lv_line stores a pointer to the point array, so it must live at file scope
  * (a local array would dangle after the function returns). */
 static void draw_humidity_icon(lv_obj_t *parent, int32_t x, int32_t y, lv_color_t color) {
@@ -198,36 +232,22 @@ static void sensor_summary_card(lv_obj_t *parent, int32_t x, int32_t y, int32_t 
 }
 
 /* cond: 0 = sun, 1 = cloud, 2 = rain. */
-static void weather_day_card(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h, const char *date, int cond,
-                             const char *temp, lv_color_t accent) {
+static void weather_day_card(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h,
+                             const deskmon_display_daily_t *daily, lv_color_t accent) {
   lv_obj_t *card = card_create(parent, x, y, w, h);
-  label_center(card, date, 5, accent);
-  const int32_t ix = w / 2 - 8;
-  const int32_t iy = h / 2 - 8;
-  if (cond == 0) {
-    draw_weather_icon(card, ix, iy, lv_color_hex(0xF5B800));
-  } else {
-    icon_fill(card, ix, iy + 4, 14, 8, lv_color_hex(0x9CB3D6), 4);
-    icon_fill(card, ix + 4, iy, 12, 9, lv_color_hex(0xB7C8E0), 4);
-    if (cond == 2) {
-      icon_fill(card, ix + 4, iy + 12, 1, 4, lv_color_hex(0x228BE6), 0);
-      icon_fill(card, ix + 9, iy + 12, 1, 4, lv_color_hex(0x228BE6), 0);
-    }
-  }
-  label_center(card, temp, h - 16, lv_color_hex(0x111827));
+  char title[24];
+  snprintf(title, sizeof(title), "%s", daily->date);
+  label_center(card, title, 2, accent);
+  draw_weather_symbol(card, 12, 30, daily->icon, 1.5);
+  label_create(card, daily->low, 42, 28, lv_color_hex(0x4B5563));
+  label_create(card, daily->high, 42, 48, lv_color_hex(0x111827));
 }
 
-void deskmon_display_snapshot_init(deskmon_display_snapshot_t *snapshot) {
-  if (snapshot == NULL) {
-    return;
-  }
-
-  const deskmon_display_sensor_t sensors[DESKMON_DISPLAY_SENSOR_COUNT] = {
-      {.name = "温度", .icon = DESKMON_SENSOR_ICON_TEMPERATURE}, {.name = "湿度", .icon = DESKMON_SENSOR_ICON_HUMIDITY},
-      {.name = "光照", .icon = DESKMON_SENSOR_ICON_LIGHT},       {.name = "CO2", .icon = DESKMON_SENSOR_ICON_CO2},
-      {.name = "TVOC", .icon = DESKMON_SENSOR_ICON_TVOC},        {.name = "AQI", .icon = DESKMON_SENSOR_ICON_AQI},
-  };
-  memcpy(snapshot->sensors, sensors, sizeof(sensors));
+static void weather_detail_item(lv_obj_t *parent, int32_t x, int32_t y, sensor_pad_icon_t icon, const char *label,
+                                const char *value, lv_color_t icon_color, lv_color_t text_color) {
+  icon(parent, x, y + 1, icon_color);
+  label_create(parent, label, x + 22, y, lv_color_hex(0x4B5563));
+  label_create(parent, value, x + 68, y, text_color);
 }
 
 static lv_point_precise_t s_sensor_points[DESKMON_DISPLAY_SENSOR_COUNT][DESKMON_DISPLAY_SENSOR_SAMPLE_COUNT];
@@ -260,6 +280,8 @@ static void sensor_pad(lv_obj_t *parent, int32_t x, int32_t y, const deskmon_dis
 }
 
 static void render_summary(lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot) {
+  const lv_color_t weather_text_col = snapshot->weather_valid ? lv_color_hex(0x111827) : lv_color_hex(0x9CA3AF);
+
   lv_obj_t *date = card_create(parent, 8, 6, 172, 72);
   draw_calendar_icon(date, 12, 18, lv_color_hex(0x256BBD));
   char date_text[40];
@@ -269,16 +291,16 @@ static void render_summary(lv_obj_t *parent, const deskmon_display_snapshot_t *s
   lv_obj_t *weather = card_create(parent, 188, 6, 284, 72);
   draw_weather_icon(weather, 14, 14, lv_color_hex(0xF5B800));
   char weather_text[32];
-  snprintf(weather_text, sizeof(weather_text), "%s\n%s", snapshot->temperature, snapshot->weather_text);
-  label_create(weather, weather_text, 40, 10, lv_color_hex(0x111827));
+  snprintf(weather_text, sizeof(weather_text), "%s\n%s", snapshot->weather_temperature, snapshot->weather_text);
+  label_create(weather, weather_text, 40, 10, weather_text_col);
   draw_humidity_icon(weather, 150, 8, lv_color_hex(0x228BE6));
   char humidity_text[24];
-  snprintf(humidity_text, sizeof(humidity_text), "湿度 %s", snapshot->humidity);
-  label_create(weather, humidity_text, 170, 10, lv_color_hex(0x1F2937));
+  snprintf(humidity_text, sizeof(humidity_text), "湿度 %s", snapshot->weather_humidity);
+  label_create(weather, humidity_text, 170, 10, weather_text_col);
   draw_wind_icon(weather, 150, 40, lv_color_hex(0x228BE6));
-  label_create(weather, snapshot->wind, 170, 42, lv_color_hex(0x1F2937));
+  label_create(weather, snapshot->wind, 170, 42, weather_text_col);
 
-  lv_obj_t *memo = card_create(parent, 8, 86, 464, 46);
+  card_create(parent, 8, 86, 464, 46);
 
   sensor_summary_card(parent, 8, 142, 110, 88, &snapshot->sensors[0], lv_color_hex(0xEF4444));
   sensor_summary_card(parent, 126, 142, 110, 88, &snapshot->sensors[1], lv_color_hex(0x228BE6));
@@ -286,35 +308,39 @@ static void render_summary(lv_obj_t *parent, const deskmon_display_snapshot_t *s
   sensor_summary_card(parent, 362, 142, 110, 88, &snapshot->sensors[3], lv_color_hex(0x22A652));
 }
 
-static void hourly_weather_row(lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot) {
-  lv_obj_t *hours = card_create(parent, 8, 106, 464, 58);
+static void hourly_weather_row(lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot, lv_color_t text_col) {
+  lv_obj_t *hours = card_create(parent, 8, 96, 464, 58);
   for (int i = 0; i < DESKMON_DISPLAY_HOURLY_COUNT; ++i) {
-    label_create(hours, snapshot->hourly[i].time, 10 + i * 74, 8, lv_color_hex(0x155CC9));
-    label_create(hours, snapshot->hourly[i].weather, 10 + i * 74, 32, lv_color_hex(0x111827));
+    label_create(hours, snapshot->hourly[i].time, 15 + i * 74, 6, lv_color_hex(0x155CC9));
+    label_create(hours, snapshot->hourly[i].weather, 15 + i * 74, 30, text_col);
   }
 }
 
 static void render_weather(lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot) {
-  lv_obj_t *main = card_create(parent, 8, 6, 220, 92);
+  const lv_color_t text_col = snapshot->weather_valid ? lv_color_hex(0x111827) : lv_color_hex(0x9CA3AF);
+
+  lv_obj_t *main = card_create(parent, 8, 6, 190, 82);
   label_create(main, snapshot->location, 12, 6, lv_color_hex(0x155CC9));
-  draw_weather_icon(main, 18, 34, lv_color_hex(0xF5B800));
-  label_create(main, snapshot->temperature, 54, 28, lv_color_hex(0x111827));
-  label_create(main, snapshot->weather_text, 112, 40, lv_color_hex(0x111827));
+  draw_weather_symbol(main, 18, 30, snapshot->daily[0].icon, 2);
+  label_create(main, snapshot->weather_temperature, 70, 24, text_col);
+  label_create(main, snapshot->weather_text, 135, 34, text_col);
+  label_create(main, "体感", 80, 56, text_col);
+  label_create(main, snapshot->feels_like, 120, 56, text_col);
 
-  lv_obj_t *detail = card_create(parent, 236, 6, 236, 92);
-  char row[48];
-  snprintf(row, sizeof(row), "最高 %s   %s", snapshot->high, snapshot->wind);
-  label_create(detail, row, 10, 8, lv_color_hex(0x111827));
-  snprintf(row, sizeof(row), "最低 %s   气压 %s", snapshot->low, snapshot->pressure);
-  label_create(detail, row, 10, 36, lv_color_hex(0x111827));
-  snprintf(row, sizeof(row), "体感 %s   降水 %s", snapshot->feels_like, snapshot->precip);
-  label_create(detail, row, 10, 64, lv_color_hex(0x111827));
+  lv_obj_t *detail = card_create(parent, 206, 6, 266, 82);
+  weather_detail_item(detail, 10, 6, draw_temperature_icon, "最高", snapshot->high, lv_color_hex(0xEF4444), text_col);
+  weather_detail_item(detail, 10, 30, draw_temperature_icon, "最低", snapshot->low, lv_color_hex(0x228BE6), text_col);
+  weather_detail_item(detail, 10, 54, draw_humidity_icon, "湿度", snapshot->weather_humidity, lv_color_hex(0x228BE6),
+                      text_col);
+  weather_detail_item(detail, 120, 6, draw_wind_icon, "风速", snapshot->wind, lv_color_hex(0x228BE6), text_col);
+  weather_detail_item(detail, 120, 30, draw_pressure_icon, "气压", snapshot->pressure, lv_color_hex(0x22A652),
+                      text_col);
+  weather_detail_item(detail, 120, 54, draw_precip_icon, "降水", snapshot->precip, lv_color_hex(0x228BE6), text_col);
 
-  hourly_weather_row(parent, snapshot);
+  hourly_weather_row(parent, snapshot, text_col);
 
   for (int i = 0; i < DESKMON_DISPLAY_DAILY_COUNT; ++i) {
-    weather_day_card(parent, 8 + i * 94, 172, 88, 62, snapshot->daily[i].date, snapshot->daily[i].icon,
-                     snapshot->daily[i].temp, lv_color_hex(0x155CC9));
+    weather_day_card(parent, 8 + i * 94, 164, 88, 70, &snapshot->daily[i], lv_color_hex(0x155CC9));
   }
 }
 
@@ -354,6 +380,50 @@ static void render_album(lv_obj_t *parent) {
   lv_obj_t *info = card_create(parent, 8, 172, 464, 62);
   label_create(info, "2026-06-30 18:30    湖畔日落", 16, 10, lv_color_hex(0x111827));
   label_create(info, "第 3 张 / 共 28 张      缩略图  [1] [2] [3]", 16, 36, lv_color_hex(0x155CC9));
+}
+
+void deskmon_display_snapshot_init(deskmon_display_snapshot_t *snapshot) {
+  if (snapshot == NULL) {
+    return;
+  }
+
+  memset(snapshot, 0, sizeof(*snapshot));
+
+  const deskmon_display_sensor_t sensors[DESKMON_DISPLAY_SENSOR_COUNT] = {
+      {.name = "温度", .icon = DESKMON_SENSOR_ICON_TEMPERATURE}, {.name = "湿度", .icon = DESKMON_SENSOR_ICON_HUMIDITY},
+      {.name = "光照", .icon = DESKMON_SENSOR_ICON_LIGHT},       {.name = "CO2", .icon = DESKMON_SENSOR_ICON_CO2},
+      {.name = "TVOC", .icon = DESKMON_SENSOR_ICON_TVOC},        {.name = "AQI", .icon = DESKMON_SENSOR_ICON_AQI},
+  };
+  memcpy(snapshot->sensors, sensors, sizeof(sensors));
+
+  /* Weather placeholder defaults so the page is never blank before first
+   * fetch. Mirrors the sensor-page set_sensor_missing pattern. */
+  strlcpy(snapshot->date, "--", sizeof(snapshot->date));
+  strlcpy(snapshot->weekday, "--", sizeof(snapshot->weekday));
+  strlcpy(snapshot->time, "--", sizeof(snapshot->time));
+  strlcpy(snapshot->location, "--", sizeof(snapshot->location));
+  strlcpy(snapshot->weather_text, "--", sizeof(snapshot->weather_text));
+  strlcpy(snapshot->temperature, "--", sizeof(snapshot->temperature));
+  strlcpy(snapshot->humidity, "--", sizeof(snapshot->humidity));
+  strlcpy(snapshot->weather_temperature, "--", sizeof(snapshot->weather_temperature));
+  strlcpy(snapshot->weather_humidity, "--", sizeof(snapshot->weather_humidity));
+  strlcpy(snapshot->wind, "--", sizeof(snapshot->wind));
+  strlcpy(snapshot->high, "--", sizeof(snapshot->high));
+  strlcpy(snapshot->low, "--", sizeof(snapshot->low));
+  strlcpy(snapshot->pressure, "--", sizeof(snapshot->pressure));
+  strlcpy(snapshot->feels_like, "--", sizeof(snapshot->feels_like));
+  strlcpy(snapshot->precip, "--", sizeof(snapshot->precip));
+  for (int i = 0; i < DESKMON_DISPLAY_HOURLY_COUNT; ++i) {
+    strlcpy(snapshot->hourly[i].time, "--", sizeof(snapshot->hourly[i].time));
+    strlcpy(snapshot->hourly[i].weather, "--", sizeof(snapshot->hourly[i].weather));
+  }
+  for (int i = 0; i < DESKMON_DISPLAY_DAILY_COUNT; ++i) {
+    strlcpy(snapshot->daily[i].date, "--", sizeof(snapshot->daily[i].date));
+    strlcpy(snapshot->daily[i].low, "--", sizeof(snapshot->daily[i].low));
+    strlcpy(snapshot->daily[i].high, "--", sizeof(snapshot->daily[i].high));
+    snapshot->daily[i].icon = DESKMON_WEATHER_ICON_SUN;
+  }
+  snapshot->weather_valid = false;
 }
 
 lv_obj_t *deskmon_page_create(deskmon_page_id_t page, lv_obj_t *parent, const deskmon_display_snapshot_t *snapshot) {
