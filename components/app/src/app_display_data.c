@@ -4,11 +4,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include <cJSON.h>
 #include <esp_crt_bundle.h>
+#include <esp_event.h>
 #include <esp_http_client.h>
 #include <esp_log.h>
+#include <esp_netif.h>
+
+#include "app/app_gzip.h"
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -19,7 +26,10 @@
 
 static const char *TAG = "deskmon_display_data";
 static const size_t QWEATHER_RESPONSE_MAX = 8192;
+static const size_t QWEATHER_DECOMPRESSED_MAX = 12288;
 static const TickType_t FIRST_UPDATE_DELAY = pdMS_TO_TICKS(1500);
+static const TickType_t WEATHER_RETRY_DELAY = pdMS_TO_TICKS(60 * 1000);
+static const size_t WEATHER_FETCH_TASK_STACK = 16384;
 
 typedef struct {
   char *data;
@@ -38,6 +48,9 @@ static deskmon_display_snapshot_t s_snapshot;
 static const deskmon_config_t *s_config;
 static value_history_t s_history[DESKMON_DISPLAY_SENSOR_COUNT];
 static bool s_started;
+static bool s_wifi_connected;
+static bool s_weather_fetch_active;
+static TickType_t s_last_weather_attempt;
 
 static esp_err_t http_event(esp_http_client_event_t *evt) {
   if (evt->event_id != HTTP_EVENT_ON_DATA) {
@@ -86,11 +99,30 @@ static esp_err_t fetch_qweather_path(const char *api_key, const char *location, 
   }
 
   esp_http_client_set_header(client, "X-QW-Api-Key", api_key);
+  esp_http_client_set_header(client, "Accept-Encoding", "identity");
   esp_err_t err = esp_http_client_perform(client);
-  if (err == ESP_OK && esp_http_client_get_status_code(client) >= 200 &&
-      esp_http_client_get_status_code(client) < 300) {
-    *body = response.data;
+  const int status = err == ESP_OK ? esp_http_client_get_status_code(client) : -1;
+  if (err == ESP_OK && status >= 200 && status < 300) {
+    if (response.length >= 2 && (uint8_t)response.data[0] == 0x1f && (uint8_t)response.data[1] == 0x8b) {
+      uint8_t *dec = calloc(QWEATHER_DECOMPRESSED_MAX, 1);
+      size_t dec_len = 0;
+      if (dec != NULL && deskmon_gunzip((uint8_t *)response.data, response.length, dec, QWEATHER_DECOMPRESSED_MAX,
+                                        &dec_len) == ESP_OK) {
+        dec[dec_len] = '\0';
+        free(response.data);
+        *body = (char *)dec;
+      } else {
+        free(dec);
+        free(response.data);
+        ESP_LOGW(TAG, "qweather %s gzip decompress failed, bytes=%u", path, (unsigned)response.length);
+        err = ESP_FAIL;
+      }
+    } else {
+      *body = response.data;
+    }
   } else {
+    ESP_LOGW(TAG, "qweather %s failed: err=%s http=%d bytes=%u", path, esp_err_to_name(err), status,
+             (unsigned)response.length);
     free(response.data);
     err = err == ESP_OK ? ESP_FAIL : err;
   }
@@ -142,42 +174,62 @@ static const char *status_five_level(uint32_t level) {
 }
 
 static const char *temperature_status(float value) {
-  if (value >= 20.0f && value <= 26.0f) return status_five_level(0);
-  if ((value >= 18.0f && value < 20.0f) || (value > 26.0f && value <= 28.0f)) return status_five_level(1);
-  if ((value >= 16.0f && value < 18.0f) || (value > 28.0f && value <= 30.0f)) return status_five_level(2);
-  if ((value >= 12.0f && value < 16.0f) || (value > 30.0f && value <= 35.0f)) return status_five_level(3);
+  if (value >= 20.0f && value <= 26.0f)
+    return status_five_level(0);
+  if ((value >= 18.0f && value < 20.0f) || (value > 26.0f && value <= 28.0f))
+    return status_five_level(1);
+  if ((value >= 16.0f && value < 18.0f) || (value > 28.0f && value <= 30.0f))
+    return status_five_level(2);
+  if ((value >= 12.0f && value < 16.0f) || (value > 30.0f && value <= 35.0f))
+    return status_five_level(3);
   return status_five_level(4);
 }
 
 static const char *humidity_status(float value) {
-  if (value >= 40.0f && value <= 60.0f) return status_five_level(0);
-  if ((value >= 30.0f && value < 40.0f) || (value > 60.0f && value <= 70.0f)) return status_five_level(1);
-  if ((value >= 20.0f && value < 30.0f) || (value > 70.0f && value <= 80.0f)) return status_five_level(2);
-  if ((value >= 10.0f && value < 20.0f) || (value > 80.0f && value <= 90.0f)) return status_five_level(3);
+  if (value >= 40.0f && value <= 60.0f)
+    return status_five_level(0);
+  if ((value >= 30.0f && value < 40.0f) || (value > 60.0f && value <= 70.0f))
+    return status_five_level(1);
+  if ((value >= 20.0f && value < 30.0f) || (value > 70.0f && value <= 80.0f))
+    return status_five_level(2);
+  if ((value >= 10.0f && value < 20.0f) || (value > 80.0f && value <= 90.0f))
+    return status_five_level(3);
   return status_five_level(4);
 }
 
 static const char *light_status(float value) {
-  if (value < 50.0f) return "过暗";
-  if (value < 150.0f) return "偏暗";
-  if (value <= 1000.0f) return "适宜";
-  if (value <= 2000.0f) return "偏亮";
+  if (value < 50.0f)
+    return "过暗";
+  if (value < 150.0f)
+    return "偏暗";
+  if (value <= 1000.0f)
+    return "适宜";
+  if (value <= 2000.0f)
+    return "偏亮";
   return "过亮";
 }
 
 static const char *co2_status(uint16_t ppm) {
-  if (ppm <= 600U) return status_five_level(0);
-  if (ppm <= 800U) return status_five_level(1);
-  if (ppm <= 1000U) return status_five_level(2);
-  if (ppm <= 1500U) return status_five_level(3);
+  if (ppm <= 600U)
+    return status_five_level(0);
+  if (ppm <= 800U)
+    return status_five_level(1);
+  if (ppm <= 1000U)
+    return status_five_level(2);
+  if (ppm <= 1500U)
+    return status_five_level(3);
   return status_five_level(4);
 }
 
 static const char *tvoc_status(uint16_t ppb) {
-  if (ppb < 65U) return status_five_level(0);
-  if (ppb < 220U) return status_five_level(1);
-  if (ppb < 650U) return status_five_level(2);
-  if (ppb < 2200U) return status_five_level(3);
+  if (ppb < 65U)
+    return status_five_level(0);
+  if (ppb < 220U)
+    return status_five_level(1);
+  if (ppb < 650U)
+    return status_five_level(2);
+  if (ppb < 2200U)
+    return status_five_level(3);
   return status_five_level(4);
 }
 
@@ -207,8 +259,6 @@ static void update_sensor_snapshot(deskmon_display_snapshot_t *snapshot) {
     copy_history_samples(&snapshot->sensors[1], &s_history[1]);
     snapshot->sensors[0].valid = true;
     snapshot->sensors[1].valid = true;
-    snprintf(snapshot->temperature, sizeof(snapshot->temperature), "%.1f°C", temperature);
-    snprintf(snapshot->humidity, sizeof(snapshot->humidity), "%.0f%%", humidity);
   } else {
     set_sensor_missing(&snapshot->sensors[0]);
     set_sensor_missing(&snapshot->sensors[1]);
@@ -253,6 +303,19 @@ static void update_sensor_snapshot(deskmon_display_snapshot_t *snapshot) {
   }
   snapshot->sensors_valid = snapshot->sensors[0].valid || snapshot->sensors[1].valid || snapshot->sensors[2].valid ||
                             snapshot->sensors[3].valid || snapshot->sensors[4].valid || snapshot->sensors[5].valid;
+
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  struct tm utc;
+  gmtime_r(&tv.tv_sec, &utc);
+  if (utc.tm_year + 1900 >= 2024) {
+    struct tm local;
+    localtime_r(&tv.tv_sec, &local);
+    strftime(snapshot->date, sizeof(snapshot->date), "%Y-%m-%d", &local);
+    strftime(snapshot->time, sizeof(snapshot->time), "%H:%M", &local);
+    static const char *const wday_cn[] = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+    strlcpy(snapshot->weekday, wday_cn[local.tm_wday % 7], sizeof(snapshot->weekday));
+  }
 }
 
 static deskmon_weather_icon_t weather_icon_from_text(const char *text) {
@@ -269,7 +332,7 @@ static void date_to_month_day(const char *date, char *out, size_t out_size) {
   int month = 0;
   int day = 0;
   if (date != NULL && sscanf(date, "%*d-%d-%d", &month, &day) == 2) {
-    snprintf(out, out_size, "%d月%d", month, day);
+    snprintf(out, out_size, "%d月%d日", month, day);
   }
 }
 
@@ -293,11 +356,11 @@ static bool parse_now(deskmon_display_snapshot_t *snapshot, const char *body) {
   cJSON *pressure = cJSON_GetObjectItemCaseSensitive(now, "pressure");
   cJSON *feels_like = cJSON_GetObjectItemCaseSensitive(now, "feelsLike");
   if (cJSON_IsString(temp) && cJSON_IsString(text)) {
-    snprintf(snapshot->temperature, sizeof(snapshot->temperature), "%s°C", temp->valuestring);
+    snprintf(snapshot->weather_temperature, sizeof(snapshot->weather_temperature), "%s°C", temp->valuestring);
     strlcpy(snapshot->weather_text, text->valuestring, sizeof(snapshot->weather_text));
   }
   if (cJSON_IsString(humidity)) {
-    snprintf(snapshot->humidity, sizeof(snapshot->humidity), "%s%%", humidity->valuestring);
+    snprintf(snapshot->weather_humidity, sizeof(snapshot->weather_humidity), "%s%%", humidity->valuestring);
   }
   if (cJSON_IsString(wind_dir) && cJSON_IsString(wind_speed)) {
     snprintf(snapshot->wind, sizeof(snapshot->wind), "%s %skm/h", wind_dir->valuestring, wind_speed->valuestring);
@@ -355,8 +418,8 @@ static bool parse_daily(deskmon_display_snapshot_t *snapshot, const char *body) 
       snapshot->daily[i].icon = weather_icon_from_text(text->valuestring);
     }
     if (cJSON_IsString(temp_min) && cJSON_IsString(temp_max)) {
-      snprintf(snapshot->daily[i].temp, sizeof(snapshot->daily[i].temp), "%s~%s°", temp_min->valuestring,
-               temp_max->valuestring);
+      snprintf(snapshot->daily[i].low, sizeof(snapshot->daily[i].low), "%s°C", temp_min->valuestring);
+      snprintf(snapshot->daily[i].high, sizeof(snapshot->daily[i].high), "%s°C", temp_max->valuestring);
       if (i == 0) {
         snprintf(snapshot->low, sizeof(snapshot->low), "%s°C", temp_min->valuestring);
         snprintf(snapshot->high, sizeof(snapshot->high), "%s°C", temp_max->valuestring);
@@ -406,11 +469,105 @@ static TickType_t weather_refresh_ticks(void) {
   return pdMS_TO_TICKS(interval_min * 60U * 1000U);
 }
 
+static void copy_weather_fields(deskmon_display_snapshot_t *dst, const deskmon_display_snapshot_t *src) {
+  strlcpy(dst->location, src->location, sizeof(dst->location));
+  strlcpy(dst->weather_text, src->weather_text, sizeof(dst->weather_text));
+  strlcpy(dst->weather_temperature, src->weather_temperature, sizeof(dst->weather_temperature));
+  strlcpy(dst->weather_humidity, src->weather_humidity, sizeof(dst->weather_humidity));
+  strlcpy(dst->wind, src->wind, sizeof(dst->wind));
+  strlcpy(dst->high, src->high, sizeof(dst->high));
+  strlcpy(dst->low, src->low, sizeof(dst->low));
+  strlcpy(dst->pressure, src->pressure, sizeof(dst->pressure));
+  strlcpy(dst->feels_like, src->feels_like, sizeof(dst->feels_like));
+  strlcpy(dst->precip, src->precip, sizeof(dst->precip));
+  memcpy(dst->hourly, src->hourly, sizeof(dst->hourly));
+  memcpy(dst->daily, src->daily, sizeof(dst->daily));
+  dst->weather_valid = src->weather_valid;
+}
+
+static void weather_fetch_task(void *arg) {
+  (void)arg;
+  vTaskDelay(pdMS_TO_TICKS(500));
+
+  deskmon_display_snapshot_t draft;
+  if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+    draft = s_snapshot;
+    xSemaphoreGive(s_lock);
+  } else {
+    draft = (deskmon_display_snapshot_t){0};
+  }
+
+  bool ok = update_weather_snapshot(&draft);
+
+  if (ok) {
+    if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+      copy_weather_fields(&s_snapshot, &draft);
+      xSemaphoreGive(s_lock);
+    }
+    ESP_LOGI(TAG, "weather fetch succeeded");
+  } else {
+    s_last_weather_attempt = xTaskGetTickCount() - weather_refresh_ticks() + WEATHER_RETRY_DELAY;
+    ESP_LOGW(TAG, "weather fetch failed, keeping last data");
+  }
+
+  if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+    s_weather_fetch_active = false;
+    xSemaphoreGive(s_lock);
+  }
+  vTaskDelete(NULL);
+}
+
+static void request_weather_refresh(void) {
+  if (s_config == NULL || s_config->qweather_api_key[0] == '\0' || s_config->qweather_location[0] == '\0') {
+    return;
+  }
+
+  bool spawn = false;
+  if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(20)) == pdTRUE) {
+    if (!s_weather_fetch_active) {
+      s_weather_fetch_active = true;
+      spawn = true;
+    }
+    xSemaphoreGive(s_lock);
+  }
+  if (!spawn) {
+    return;
+  }
+
+  s_last_weather_attempt = xTaskGetTickCount();
+
+  if (xTaskCreate(weather_fetch_task, "wfetch", WEATHER_FETCH_TASK_STACK, NULL, 5, NULL) != pdPASS) {
+    ESP_LOGW(TAG, "weather fetch task create failed");
+    if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+      s_weather_fetch_active = false;
+      xSemaphoreGive(s_lock);
+    }
+  }
+}
+
+static void display_data_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
+  (void)arg;
+  (void)event_data;
+  if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    s_wifi_connected = true;
+    ESP_LOGI(TAG, "WiFi connected, triggering weather fetch");
+    request_weather_refresh();
+  } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    s_wifi_connected = false;
+  }
+}
+
 static void display_data_task(void *arg) {
   (void)arg;
   vTaskDelay(FIRST_UPDATE_DELAY);
-  TickType_t last_weather_attempt = 0;
-  bool weather_attempted = false;
+
+  wifi_mode_t mode;
+  if (esp_wifi_get_mode(&mode) == ESP_OK && mode != WIFI_MODE_NULL) {
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ip_info;
+    s_wifi_connected = (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0);
+  }
+
   while (true) {
     deskmon_display_snapshot_t next;
     if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
@@ -418,19 +575,16 @@ static void display_data_task(void *arg) {
       xSemaphoreGive(s_lock);
     }
     update_sensor_snapshot(&next);
-    const TickType_t now = xTaskGetTickCount();
-    if (!weather_attempted || now - last_weather_attempt >= weather_refresh_ticks()) {
-      deskmon_display_snapshot_t weather_next = next;
-      last_weather_attempt = now;
-      weather_attempted = true;
-      if (update_weather_snapshot(&weather_next)) {
-        next = weather_next;
-      }
-    }
     if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
       s_snapshot = next;
       xSemaphoreGive(s_lock);
     }
+
+    const TickType_t now = xTaskGetTickCount();
+    if (s_wifi_connected && (s_last_weather_attempt == 0 || now - s_last_weather_attempt >= weather_refresh_ticks())) {
+      request_weather_refresh();
+    }
+
     const uint32_t interval_sec =
         s_config != NULL ? s_config->sensor_read_interval_sec : DESKMON_CONFIG_DEFAULT_SENSOR_READ_SEC;
     vTaskDelay(pdMS_TO_TICKS(interval_sec * 1000U));
@@ -450,20 +604,21 @@ esp_err_t deskmon_display_data_start(const deskmon_config_t *config) {
   }
   if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
     deskmon_display_snapshot_init(&s_snapshot);
+    strlcpy(s_snapshot.location, config->qweather_location, sizeof(s_snapshot.location));
     xSemaphoreGive(s_lock);
   }
   if (s_started) {
     return ESP_OK;
   }
-  /* Stack carries the TLS handshake (mbedTLS cert verify + SHA is ~8 KB by
-   * itself, same reason the httpd qweather task needs its own) plus two
-   * ~2 KB snapshot locals (next + weather rollback copy) in the loop. Keep
-   * generous headroom; shrinking this trips a runtime stack-overflow. */
-  if (xTaskCreate(display_data_task, "display_data", 16384, NULL, 5, NULL) != pdPASS) {
+
+  esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, display_data_event_handler, NULL);
+  esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, display_data_event_handler, NULL);
+
+  if (xTaskCreate(display_data_task, "display_data", 4096, NULL, 5, NULL) != pdPASS) {
     return ESP_ERR_NO_MEM;
   }
   s_started = true;
-  ESP_LOGI(TAG, "display data updater started");
+  ESP_LOGI(TAG, "display data updater started (4 KB task; weather TLS + gzip in on-demand 16 KB wfetch task)");
   return ESP_OK;
 }
 
