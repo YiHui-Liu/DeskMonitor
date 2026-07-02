@@ -19,6 +19,7 @@
 #include "app/app_config.h"
 #include "app/app_config_json.h"
 #include "app/app_diagnostics.h"
+#include "app/app_gzip.h"
 #include "app/app_ota.h"
 #include "app/app_time.h"
 #include "app/app_wifi.h"
@@ -27,7 +28,8 @@
 static const char *TAG = "deskmon_httpd";
 static const size_t MAX_POST_BODY = 2048;
 static const size_t QWEATHER_RESPONSE_MAX = 4096;
-static const size_t QWEATHER_TASK_STACK = 8192;
+static const size_t QWEATHER_DECOMPRESSED_MAX = 8192;
+static const size_t QWEATHER_TASK_STACK = 16384;
 static const UBaseType_t QWEATHER_TASK_PRIORITY = 5;
 static const TickType_t QWEATHER_FETCH_TIMEOUT_TICKS = pdMS_TO_TICKS(6000);
 
@@ -171,10 +173,27 @@ static esp_err_t fetch_qweather_now(const char *api_key, const char *location, i
   }
 
   esp_http_client_set_header(client, "X-QW-Api-Key", api_key);
+  esp_http_client_set_header(client, "Accept-Encoding", "identity");
   esp_err_t err = esp_http_client_perform(client);
   if (err == ESP_OK) {
     *status_code = esp_http_client_get_status_code(client);
-    *body = response.data;
+    if (response.length >= 2 && (uint8_t)response.data[0] == 0x1f && (uint8_t)response.data[1] == 0x8b) {
+      uint8_t *dec = calloc(QWEATHER_DECOMPRESSED_MAX, 1);
+      size_t dec_len = 0;
+      if (dec != NULL && deskmon_gunzip((uint8_t *)response.data, response.length, dec,
+                                         QWEATHER_DECOMPRESSED_MAX, &dec_len) == ESP_OK) {
+        dec[dec_len] = '\0';
+        free(response.data);
+        *body = (char *)dec;
+      } else {
+        free(dec);
+        free(response.data);
+        *body = NULL;
+        err = ESP_FAIL;
+      }
+    } else {
+      *body = response.data;
+    }
   } else {
     free(response.data);
   }
@@ -257,7 +276,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 }
 
 static esp_err_t config_get_handler(httpd_req_t *req) {
-  char *json = deskmon_config_to_json(s_config);
+  char *json = deskmon_config_to_json(s_config, true);
   if (json == NULL) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "config encode failed");
     return ESP_FAIL;
@@ -326,6 +345,7 @@ static esp_err_t config_post_handler(httpd_req_t *req) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "time config apply failed");
     return ESP_FAIL;
   }
+  deskmon_wifi_apply_sta(s_config);
 
   return send_json(req, "{\"ok\":true}");
 }
@@ -381,15 +401,22 @@ static esp_err_t qweather_test_post_handler(httpd_req_t *req) {
 
   cJSON *api_key = cJSON_GetObjectItemCaseSensitive(root, "qweather_api_key");
   cJSON *location = cJSON_GetObjectItemCaseSensitive(root, "qweather_location");
-  bool inputs_valid = cJSON_IsString(api_key) && valid_header_value(api_key->valuestring) && cJSON_IsString(location) &&
-                      valid_location_value(location->valuestring);
+  const char *api_key_value = s_config != NULL ? s_config->qweather_api_key : "";
+  const char *location_value = s_config != NULL ? s_config->qweather_location : "";
+  if (cJSON_IsString(api_key) && api_key->valuestring != NULL && api_key->valuestring[0] != '\0') {
+    api_key_value = api_key->valuestring;
+  }
+  if (cJSON_IsString(location) && location->valuestring != NULL && location->valuestring[0] != '\0') {
+    location_value = location->valuestring;
+  }
+  bool inputs_valid = valid_header_value(api_key_value) && valid_location_value(location_value);
 
   qweather_request_t *request = NULL;
   if (inputs_valid) {
     request = calloc(1, sizeof(qweather_request_t));
     if (request != NULL) {
-      strncpy(request->api_key, api_key->valuestring, sizeof(request->api_key) - 1);
-      strncpy(request->location, location->valuestring, sizeof(request->location) - 1);
+      strncpy(request->api_key, api_key_value, sizeof(request->api_key) - 1);
+      strncpy(request->location, location_value, sizeof(request->location) - 1);
     }
   }
   cJSON_Delete(root);
