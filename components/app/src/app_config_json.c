@@ -12,6 +12,13 @@ static void copy_json_string(cJSON *root, const char *key, char *target, size_t 
   }
 }
 
+static void copy_json_secret(cJSON *root, const char *key, char *target, size_t target_size) {
+  cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
+  if (cJSON_IsString(item) && item->valuestring != NULL && item->valuestring[0] != '\0') {
+    strlcpy(target, item->valuestring, target_size);
+  }
+}
+
 static bool json_string_fits(cJSON *root, const char *key, size_t target_size) {
   cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
   return !cJSON_IsString(item) || item->valuestring == NULL || strlen(item->valuestring) < target_size;
@@ -33,7 +40,7 @@ static void read_page_flag(cJSON *pages, const char *key, bool *target) {
   }
 }
 
-char *deskmon_config_to_json(const deskmon_config_t *config) {
+char *deskmon_config_to_json(const deskmon_config_t *config, bool mask_secrets) {
   if (config == NULL) {
     return NULL;
   }
@@ -44,12 +51,15 @@ char *deskmon_config_to_json(const deskmon_config_t *config) {
   }
 
   cJSON_AddStringToObject(root, "wifi_ssid", config->wifi_ssid);
-  /* Secrets are write-only: never echo them back. Callers learn whether a
-   * value is already stored via the has_* flags and POST a new value to set. */
-  cJSON_AddStringToObject(root, "wifi_password", "");
-  cJSON_AddBoolToObject(root, "has_wifi_password", config->wifi_password[0] != '\0');
-  cJSON_AddStringToObject(root, "qweather_api_key", "");
-  cJSON_AddBoolToObject(root, "has_qweather_api_key", config->qweather_api_key[0] != '\0');
+  if (mask_secrets) {
+    cJSON_AddStringToObject(root, "wifi_password", "");
+    cJSON_AddBoolToObject(root, "has_wifi_password", config->wifi_password[0] != '\0');
+    cJSON_AddStringToObject(root, "qweather_api_key", "");
+    cJSON_AddBoolToObject(root, "has_qweather_api_key", config->qweather_api_key[0] != '\0');
+  } else {
+    cJSON_AddStringToObject(root, "wifi_password", config->wifi_password);
+    cJSON_AddStringToObject(root, "qweather_api_key", config->qweather_api_key);
+  }
   cJSON_AddStringToObject(root, "qweather_location", config->qweather_location);
   cJSON_AddStringToObject(root, "page_summary_note", config->page_summary_note);
   cJSON_AddStringToObject(root, "ntp_server", config->ntp_server);
@@ -76,8 +86,8 @@ deskmon_config_status_t deskmon_config_from_json(const char *json, deskmon_confi
   }
 
   copy_json_string(root, "wifi_ssid", next.wifi_ssid, sizeof(next.wifi_ssid));
-  copy_json_string(root, "wifi_password", next.wifi_password, sizeof(next.wifi_password));
-  copy_json_string(root, "qweather_api_key", next.qweather_api_key, sizeof(next.qweather_api_key));
+  copy_json_secret(root, "wifi_password", next.wifi_password, sizeof(next.wifi_password));
+  copy_json_secret(root, "qweather_api_key", next.qweather_api_key, sizeof(next.qweather_api_key));
   copy_json_string(root, "qweather_location", next.qweather_location, sizeof(next.qweather_location));
   copy_json_string(root, "page_summary_note", next.page_summary_note, sizeof(next.page_summary_note));
   if (!json_string_fits(root, "ntp_server", sizeof(next.ntp_server))) {

@@ -71,7 +71,7 @@ esp_err_t deskmon_config_save(const deskmon_config_t *config) {
     return ESP_ERR_INVALID_ARG;
   }
 
-  char *json = deskmon_config_to_json(config);
+  char *json = deskmon_config_to_json(config, false);
   if (json == NULL) {
     return ESP_ERR_NO_MEM;
   }
