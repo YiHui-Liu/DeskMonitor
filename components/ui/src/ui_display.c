@@ -385,7 +385,7 @@ static esp_err_t init_spi_panel(void) {
 
   const esp_lcd_panel_dev_config_t panel_cfg = {
       .reset_gpio_num = DESKMON_DISPLAY_RST_GPIO,
-      .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+      .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
       .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
       .bits_per_pixel = 16,
       .vendor_config = NULL,
