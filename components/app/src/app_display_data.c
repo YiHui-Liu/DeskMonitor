@@ -1,5 +1,6 @@
 #include "app/app_display_data.h"
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,12 +15,12 @@
 #include <esp_log.h>
 #include <esp_netif.h>
 
-#include "app/app_gzip.h"
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "app/app_gzip.h"
 #include "sensors/aht20.h"
 #include "sensors/ens160.h"
 #include "sensors/tsl2591.h"
@@ -168,67 +169,78 @@ static void copy_history_samples(deskmon_display_sensor_t *sensor, const value_h
   }
 }
 
+static float apparent_temperature(float t, float rh) {
+  float vapor = rh / 100.0f * 6.105f * expf(17.27f * t / (237.7f + t));
+  return 1.07f * t + 0.2f * vapor - 2.7f;
+}
+
+static const char *temperature_status(float at) {
+  if (at < 0.f)
+    return "严寒";
+  else if (at < 15.f)
+    return "寒冷";
+  else if (at < 20.f)
+    return "凉爽";
+  else if (at < 26.f)
+    return "舒适";
+  else if (at < 30.f)
+    return "微热";
+  else if (at < 35.f)
+    return "炎热";
+  else
+    return "酷热";
+}
+
+static const char *humidity_status(float rh) {
+  if (rh < 20.0f)
+    return "过干";
+  else if (rh < 40.0f)
+    return "干燥";
+  else if (rh <= 60.0f)
+    return "适宜";
+  else if (rh <= 80.0f)
+    return "潮湿";
+  else
+    return "过湿";
+}
+
+static const char *light_status(float light) {
+  if (light < 50.0f)
+    return "过暗";
+  if (light < 150.0f)
+    return "偏暗";
+  if (light <= 1000.0f)
+    return "适宜";
+  if (light <= 2000.0f)
+    return "偏亮";
+  return "过亮";
+}
+
 static const char *status_five_level(uint32_t level) {
   static const char *const labels[] = {"优秀", "良好", "一般", "较差", "极差"};
   return labels[level < 5U ? level : 4U];
 }
 
-static const char *temperature_status(float value) {
-  if (value >= 20.0f && value <= 26.0f)
+static const char *co2_status(uint16_t eco2) {
+  if (eco2 <= 600U)
     return status_five_level(0);
-  if ((value >= 18.0f && value < 20.0f) || (value > 26.0f && value <= 28.0f))
+  if (eco2 <= 800U)
     return status_five_level(1);
-  if ((value >= 16.0f && value < 18.0f) || (value > 28.0f && value <= 30.0f))
+  if (eco2 <= 1000U)
     return status_five_level(2);
-  if ((value >= 12.0f && value < 16.0f) || (value > 30.0f && value <= 35.0f))
+  if (eco2 <= 1500U)
     return status_five_level(3);
   return status_five_level(4);
 }
 
-static const char *humidity_status(float value) {
-  if (value >= 40.0f && value <= 60.0f)
+static const char *tvoc_status(uint16_t tvoc) {
+  if (tvoc < 65U)
     return status_five_level(0);
-  if ((value >= 30.0f && value < 40.0f) || (value > 60.0f && value <= 70.0f))
+  if (tvoc < 220U)
     return status_five_level(1);
-  if ((value >= 20.0f && value < 30.0f) || (value > 70.0f && value <= 80.0f))
+  if (tvoc < 650U)
     return status_five_level(2);
-  if ((value >= 10.0f && value < 20.0f) || (value > 80.0f && value <= 90.0f))
-    return status_five_level(3);
-  return status_five_level(4);
-}
-
-static const char *light_status(float value) {
-  if (value < 50.0f)
-    return "过暗";
-  if (value < 150.0f)
-    return "偏暗";
-  if (value <= 1000.0f)
-    return "适宜";
-  if (value <= 2000.0f)
-    return "偏亮";
-  return "过亮";
-}
-
-static const char *co2_status(uint16_t ppm) {
-  if (ppm <= 600U)
-    return status_five_level(0);
-  if (ppm <= 800U)
-    return status_five_level(1);
-  if (ppm <= 1000U)
-    return status_five_level(2);
-  if (ppm <= 1500U)
-    return status_five_level(3);
-  return status_five_level(4);
-}
-
-static const char *tvoc_status(uint16_t ppb) {
-  if (ppb < 65U)
-    return status_five_level(0);
-  if (ppb < 220U)
-    return status_five_level(1);
-  if (ppb < 650U)
-    return status_five_level(2);
-  if (ppb < 2200U)
+  if (tvoc < 2200U)
     return status_five_level(3);
   return status_five_level(4);
 }
@@ -247,11 +259,13 @@ static void update_sensor_snapshot(deskmon_display_snapshot_t *snapshot) {
   float temperature = 0.0f;
   float humidity = 0.0f;
   if (deskmon_aht20_read(&temperature, &humidity) == ESP_OK) {
+    float at = apparent_temperature(temperature, humidity);
+
     history_add(&s_history[0], temperature);
     history_add(&s_history[1], humidity);
     snprintf(snapshot->sensors[0].reading, sizeof(snapshot->sensors[0].reading), "%.1f°C", temperature);
     snprintf(snapshot->sensors[1].reading, sizeof(snapshot->sensors[1].reading), "%.0f%%", humidity);
-    strlcpy(snapshot->sensors[0].status, temperature_status(temperature), sizeof(snapshot->sensors[0].status));
+    strlcpy(snapshot->sensors[0].status, temperature_status(at), sizeof(snapshot->sensors[0].status));
     strlcpy(snapshot->sensors[1].status, humidity_status(humidity), sizeof(snapshot->sensors[1].status));
     format_history(snapshot->sensors[0].stats, sizeof(snapshot->sensors[0].stats), &s_history[0], true);
     format_history(snapshot->sensors[1].stats, sizeof(snapshot->sensors[1].stats), &s_history[1], true);
