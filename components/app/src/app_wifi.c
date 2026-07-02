@@ -100,4 +100,37 @@ esp_err_t deskmon_wifi_start(const deskmon_config_t *config) {
   return ESP_OK;
 }
 
+esp_err_t deskmon_wifi_apply_sta(const deskmon_config_t *config) {
+  if (config == NULL) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  if (config->wifi_ssid[0] == '\0') {
+    ESP_LOGI(TAG, "STA SSID cleared, keeping AP-only mode");
+    return ESP_OK;
+  }
+
+  wifi_config_t sta_config = {0};
+  strlcpy((char *)sta_config.sta.ssid, config->wifi_ssid, sizeof(sta_config.sta.ssid));
+  strlcpy((char *)sta_config.sta.password, config->wifi_password, sizeof(sta_config.sta.password));
+  sta_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+
+  esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "STA set config failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  s_retry_count = 0;
+  esp_wifi_disconnect();
+  err = esp_wifi_connect();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "STA reconnect start failed: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  ESP_LOGI(TAG, "STA reconfigured: ssid=%s", config->wifi_ssid);
+  return ESP_OK;
+}
+
 deskmon_wifi_status_t deskmon_wifi_status(void) { return s_status; }
