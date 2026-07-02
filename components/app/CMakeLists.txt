@@ -5,6 +5,7 @@ idf_component_register(
         "src/app_config_validate.c"
         "src/app_display_data.c"
         "src/app_diagnostics.c"
+        "src/app_gzip.c"
         "src/app_httpd.c"
         "src/app_ota.c"
         "src/app_storage.c"
@@ -20,6 +21,7 @@ idf_component_register(
         esp_http_server
         esp_https_ota
         esp_netif
+        esp_rom
         esp_timer
         esp_wifi
         espressif__cjson
